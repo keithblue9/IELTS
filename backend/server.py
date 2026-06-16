@@ -659,8 +659,20 @@ async def stt(file: UploadFile = File(...), user_id: str = Depends(get_current_u
 async def tts(payload: TTSReq, user_id: str = Depends(get_current_user_id)):
     if not payload.text.strip():
         raise HTTPException(status_code=400, detail="Empty text")
+
+    # Pull voice settings from profile when not provided in the request payload
+    profile = await db.profiles.find_one({"user_id": user_id}, {"_id": 0}) or {}
+    stability = payload.stability if payload.stability is not None else profile.get("tutor_voice_stability", 0.35)
+    style = payload.style if payload.style is not None else profile.get("tutor_voice_style", 0.65)
+    voice = payload.voice or profile.get("tutor_voice", "Bella")
+
     try:
-        audio = await synthesize_speech(payload.text, voice=payload.voice or "nova")
+        audio = await synthesize_speech(
+            payload.text,
+            voice=voice,
+            stability=stability,
+            style=style,
+        )
     except Exception as e:
         logger.error(f"TTS error: {e}")
         raise HTTPException(status_code=500, detail="TTS failed")
