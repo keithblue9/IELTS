@@ -814,6 +814,54 @@ async def drill_history(user_id: str = Depends(get_current_user_id)):
     return items
 
 
+# ===================== BADGES / ACHIEVEMENTS =====================
+BADGES = [
+    {"id": "streak-3", "type": "streak", "threshold": 3, "title": "3-Day Spark", "desc": "Three days in a row", "icon": "🔥"},
+    {"id": "streak-7", "type": "streak", "threshold": 7, "title": "Week Warrior", "desc": "Seven consecutive days", "icon": "🌟"},
+    {"id": "streak-30", "type": "streak", "threshold": 30, "title": "Monthly Master", "desc": "30-day streak — habit locked in", "icon": "🏔️"},
+    {"id": "streak-100", "type": "streak", "threshold": 100, "title": "Centurion", "desc": "100 days — band 8 is yours", "icon": "👑"},
+    {"id": "xp-100", "type": "xp", "threshold": 100, "title": "First Steps", "desc": "Earned 100 XP", "icon": "🌱"},
+    {"id": "xp-500", "type": "xp", "threshold": 500, "title": "Half-K Hero", "desc": "Earned 500 XP", "icon": "⚡"},
+    {"id": "xp-1000", "type": "xp", "threshold": 1000, "title": "Kilo Club", "desc": "Earned 1,000 XP", "icon": "💎"},
+    {"id": "xp-5000", "type": "xp", "threshold": 5000, "title": "XP Legend", "desc": "Earned 5,000 XP", "icon": "🏆"},
+    {"id": "writer-5", "type": "writing", "threshold": 5, "title": "Wordsmith", "desc": "Submitted 5 essays", "icon": "✍️"},
+    {"id": "speaker-5", "type": "speaking", "threshold": 5, "title": "Voice of Aria", "desc": "Completed 5 speaking sessions", "icon": "🎙️"},
+    {"id": "listener-5", "type": "listening", "threshold": 5, "title": "Sharp Ears", "desc": "Finished 5 listening tests", "icon": "🎧"},
+]
+
+
+@api.get("/badges")
+async def get_badges(user_id: str = Depends(get_current_user_id)):
+    streak = await _compute_streak(user_id)
+    total_xp = 0
+    cur = db.daily_drills.find({"user_id": user_id}, {"_id": 0, "xp_earned": 1})
+    async for d in cur:
+        total_xp += d.get("xp_earned", 0)
+    speak_count = await db.speaking_sessions.count_documents({"user_id": user_id, "status": "completed"})
+    write_count = await db.writing_submissions.count_documents({"user_id": user_id})
+    listen_count = await db.listening_attempts.count_documents({"user_id": user_id})
+
+    counters = {
+        "streak": streak,
+        "xp": total_xp,
+        "writing": write_count,
+        "speaking": speak_count,
+        "listening": listen_count,
+    }
+    result = []
+    for b in BADGES:
+        current = counters.get(b["type"], 0)
+        earned = current >= b["threshold"]
+        result.append({
+            **b,
+            "earned": earned,
+            "progress": min(current, b["threshold"]),
+            "current": current,
+        })
+    earned_count = sum(1 for b in result if b["earned"])
+    return {"badges": result, "earned_count": earned_count, "total": len(result), "counters": counters}
+
+
 # ===================== APP WIRING =====================
 app.include_router(api)
 

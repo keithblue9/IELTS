@@ -1,7 +1,10 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
+import { useReminder } from "@/lib/reminder";
+import api from "@/lib/api";
 import PinLogin from "@/pages/PinLogin";
 import Dashboard from "@/pages/Dashboard";
 import Speaking from "@/pages/Speaking";
@@ -33,11 +36,36 @@ function Shell({ children }) {
   );
 }
 
+function GlobalHooks() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    if (user) api.get("/profile").then((r) => setProfile(r.data)).catch(() => {});
+  }, [user]);
+
+  useReminder(profile);
+
+  // Listen for service worker navigation requests (notification clicks)
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (e) => {
+      if (e.data?.type === "navigate" && e.data?.url) navigate(e.data.url);
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
+  }, [navigate]);
+
+  return null;
+}
+
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
         <AuthProvider>
+          <GlobalHooks />
           <Routes>
             <Route path="/" element={<PinLogin />} />
             <Route path="/app" element={<Shell><Dashboard /></Shell>} />

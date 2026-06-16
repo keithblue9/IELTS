@@ -61,6 +61,8 @@ class Profile(BaseModel):
     tutor_personality: str = "encouraging"  # encouraging | strict | conversational
     native_language: str = "Indonesian"
     weak_areas: List[str] = Field(default_factory=list)
+    reminder_enabled: bool = False
+    reminder_time: str = "07:00"  # HH:MM 24h
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -74,6 +76,8 @@ class ProfileUpdate(BaseModel):
     tutor_personality: Optional[str] = None
     native_language: Optional[str] = None
     weak_areas: Optional[List[str]] = None
+    reminder_enabled: Optional[bool] = None
+    reminder_time: Optional[str] = None
 
 
 # ---------- Speaking ----------

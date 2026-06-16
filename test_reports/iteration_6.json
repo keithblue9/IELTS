@@ -1,0 +1,31 @@
+{
+  "summary": "Iter6 — Tested PWA reminder + badges. Backend: 13/13 pytest cases pass (profile reminder fields persist; /api/badges returns 11 badges with correct shape; writer-5 unlocks after creating 5 writings; xp-100 earned; back-compat endpoints clean). Frontend: badges-panel renders all 11 cells with correct earned/locked styling (xp-100 & writer-5 earned w/ bg-[#E8EFE9], streak-30 & listener-5 locked w/ 🔒 and progress bars 1/30, 1/5); toast 'Badge unlocked — Wordsmith!' fires after seeding localStorage; pain-points-panel (Y=916) comes before badges-panel (Y=1290); profile reminder section works — time input updates, save persists reminder_enabled=true and reminder_time='08:30' across reload (reminder-disable-btn becomes visible); service-worker.js HTTP 200 contains 'notificationclick' handler and '/app/drill' target URL.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard (radar/line charts)", "issues": ["Recharts logs width(-1) height(-1) warnings — ResponsiveContainer briefly renders before parent has height. Cosmetic only; charts render. Could add minHeight to parent div."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter6_badges_reminder.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Profile.jsx — reminder-save-btn calls save() which sends the full profile payload. Works, but the dedicated 'Save changes' button further up also covers reminder fields; two save paths is slightly redundant. Acceptable.",
+    "reminder.js — useReminder uses setTimeout up to 24h which is unreliable across tab sleep/visibility; the 60-min interval fallback mitigates. Good enough for PWA.",
+    "service-worker.js — APP_SHELL includes '/' which depending on hosting may 404 if SSR not set up; install errors are swallowed via .catch(() => {}). Fine.",
+    "server.py — BADGES list is module-level constant; if you add types later remember to update _compute_streak/counters dictionary too."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter6_badges_reminder.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% — all reminder + badges UI flows verified"},
+  "test_credentials": "PIN 123456 (default owner)",
+  "seed_data_creation": "Created 4 additional writing submissions via /api/writing/submit during writer-5 unlock test — total writings now ≥5; writer-5 badge is now earned.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Owner has streak_days=1, total_xp=125, writings>=5, listening=1, speaking=2. Badges currently earned: xp-100 + writer-5. Locked: streak-3/7/30/100, xp-500/1000/5000, speaker-5, listener-5. To test more unlocks, create more speaking sessions or listening attempts via API. The localStorage key 'ielts_earned_badges' must be pre-seeded with a non-empty array (e.g. ['none']) to trigger unlock toasts on first visit. Reminder state was cleaned up (reminder_enabled=false, reminder_time=07:00) at end of frontend test."
+}

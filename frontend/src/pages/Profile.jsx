@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Lock } from "lucide-react";
+import { Loader2, Lock, Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
+import { requestNotificationPermission } from "@/lib/reminder";
 
 const WEAK = ["Fluency", "Lexical Resource", "Grammar", "Pronunciation", "Task Achievement", "Coherence"];
 
@@ -32,12 +33,25 @@ export default function Profile() {
         target_band: p.target_band, current_band: p.current_band, test_date: p.test_date || null,
         daily_minutes: p.daily_minutes, tutor_voice: p.tutor_voice, tutor_personality: p.tutor_personality,
         native_language: p.native_language, weak_areas: p.weak_areas,
+        reminder_enabled: p.reminder_enabled, reminder_time: p.reminder_time,
       });
       setP(data);
       toast.success("Settings saved");
     } catch (e) {
       toast.error("Failed to save");
     } finally { setBusy(false); }
+  };
+
+  const enableReminder = async () => {
+    const result = await requestNotificationPermission();
+    if (result === "granted") {
+      set("reminder_enabled", true);
+      toast.success("Notifications enabled — drill reminder will fire at your chosen time");
+    } else if (result === "unsupported") {
+      toast.error("This browser doesn't support notifications");
+    } else {
+      toast.error("Permission denied — enable in browser settings");
+    }
   };
 
   const changePin = async () => {
@@ -134,6 +148,38 @@ export default function Profile() {
         <Button onClick={save} disabled={busy} data-testid="profile-save-btn" className="bg-[#2D6A4F] hover:bg-[#1B4332] text-white rounded-full px-6 h-11 w-full sm:w-auto">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
         </Button>
+      </div>
+
+      {/* Daily reminder */}
+      <div className="bg-white border border-[#E5E2DC] rounded-2xl p-5 sm:p-8 space-y-5" data-testid="reminder-section">
+        <div className="flex items-center gap-2">
+          {p.reminder_enabled ? <Bell className="h-4 w-4 text-[#2D6A4F]" /> : <BellOff className="h-4 w-4 text-[#8A958F]" />}
+          <h2 className="font-serif-display text-xl">Daily drill reminder</h2>
+        </div>
+        <p className="text-xs text-[#8A958F] -mt-2">Get a gentle push at your chosen time. Works best when the app is installed as a PWA.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+          <div className="sm:col-span-1">
+            <Label className="text-sm">Reminder time</Label>
+            <Input data-testid="reminder-time-input" type="time" value={p.reminder_time || "07:00"} onChange={(e) => set("reminder_time", e.target.value)} className="mt-1.5" />
+          </div>
+          <div className="sm:col-span-2 flex gap-2 flex-wrap">
+            {!p.reminder_enabled ? (
+              <Button onClick={enableReminder} data-testid="reminder-enable-btn" className="bg-[#2D6A4F] hover:bg-[#1B4332] text-white rounded-full">
+                <Bell className="h-4 w-4 mr-2" /> Enable reminders
+              </Button>
+            ) : (
+              <Button onClick={() => set("reminder_enabled", false)} variant="outline" data-testid="reminder-disable-btn" className="rounded-full">
+                <BellOff className="h-4 w-4 mr-2" /> Turn off
+              </Button>
+            )}
+            <Button onClick={save} disabled={busy} variant="ghost" className="rounded-full" data-testid="reminder-save-btn">Save</Button>
+          </div>
+        </div>
+        {p.reminder_enabled && typeof Notification !== "undefined" && Notification.permission !== "granted" && (
+          <div className="text-xs text-[#E07A5F] bg-[#FCEEEA] border border-[#E07A5F]/30 rounded-lg p-3">
+            Notification permission isn't granted — tap "Enable reminders" to grant it again.
+          </div>
+        )}
       </div>
 
       {/* Change PIN */}

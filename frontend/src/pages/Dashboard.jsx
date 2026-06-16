@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Mic, PenLine, Headphones, BookOpen, Flame, Target, Calendar, Sparkles, TrendingDown, TrendingUp, Zap, ArrowRight, Trophy } from "lucide-react";
+import { Mic, PenLine, Headphones, BookOpen, Flame, Target, Calendar, Sparkles, TrendingDown, TrendingUp, Zap, ArrowRight, Trophy, Award } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -12,12 +13,27 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [pain, setPain] = useState(null);
   const [drillStreak, setDrillStreak] = useState(null);
+  const [badges, setBadges] = useState(null);
 
   useEffect(() => {
     api.get("/profile").then((r) => setProfile(r.data));
     api.get("/dashboard/stats").then((r) => setStats(r.data));
     api.get("/dashboard/pain-points").then((r) => setPain(r.data));
     api.get("/drill/streak").then((r) => setDrillStreak(r.data)).catch(() => {});
+    api.get("/badges").then((r) => {
+      setBadges(r.data);
+      // Detect newly earned badges since last visit
+      const prev = JSON.parse(localStorage.getItem("ielts_earned_badges") || "[]");
+      const currentlyEarned = r.data.badges.filter((b) => b.earned).map((b) => b.id);
+      const newOnes = currentlyEarned.filter((id) => !prev.includes(id));
+      if (newOnes.length > 0 && prev.length > 0) {
+        newOnes.forEach((id) => {
+          const b = r.data.badges.find((x) => x.id === id);
+          if (b) toast.success(`${b.icon}  Badge unlocked — ${b.title}!`, { duration: 6000 });
+        });
+      }
+      localStorage.setItem("ielts_earned_badges", JSON.stringify(currentlyEarned));
+    }).catch(() => {});
   }, []);
 
   const overall = stats?.overall_band ?? profile?.current_band ?? 0;
@@ -146,6 +162,44 @@ export default function Dashboard() {
                 <p className="text-xs text-[#8A958F]">—</p>
               )}
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Badges */}
+      {badges && (
+        <section className="bg-white border border-[#E5E2DC] rounded-2xl p-5 sm:p-6" data-testid="badges-panel">
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <div>
+              <div className="text-xs uppercase tracking-[0.2em] text-[#8A958F]">Achievements</div>
+              <h3 className="font-serif-display text-xl sm:text-2xl mt-1">Badges</h3>
+            </div>
+            <div className="text-xs text-[#8A958F]">
+              <span className="font-serif-display text-2xl text-[#2D6A4F]">{badges.earned_count}</span>
+              <span> / {badges.total}</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            {badges.badges.map((b) => (
+              <div
+                key={b.id}
+                data-testid={`badge-${b.id}`}
+                className={`rounded-xl p-3 border text-center transition-all ${b.earned ? "bg-[#E8EFE9] border-[#2D6A4F]/40" : "bg-[#F9F8F6] border-[#E5E2DC] opacity-60"}`}
+                title={`${b.title} — ${b.desc}`}
+              >
+                <div className="text-3xl sm:text-4xl">{b.earned ? b.icon : "🔒"}</div>
+                <div className="font-serif-display text-sm mt-1.5 text-[#1A201C]">{b.title}</div>
+                <div className="text-[10px] text-[#8A958F] mt-1 leading-tight line-clamp-2">{b.desc}</div>
+                {!b.earned && (
+                  <div className="mt-2">
+                    <div className="h-1 bg-[#E5E2DC] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#E07A5F]" style={{ width: `${Math.min(100, (b.current / b.threshold) * 100)}%` }} />
+                    </div>
+                    <div className="text-[10px] text-[#8A958F] mt-1">{b.current}/{b.threshold}</div>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </section>
       )}
