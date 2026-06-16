@@ -3,7 +3,7 @@ import io
 import logging
 import os
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +21,7 @@ from auth import create_token, get_current_user_id, hash_password, verify_passwo
 from audio_service import synthesize_speech, transcribe_audio  # noqa: E402
 import drill_service  # noqa: E402
 import llm_service  # noqa: E402
+import recap_service  # noqa: E402
 from models import (  # noqa: E402
     AuthResponse,
     ChangePinReq,
@@ -41,6 +42,7 @@ from models import (  # noqa: E402
     UserLogin,
     UserOut,
     UserSignup,
+    WeeklyRecap,
     WritingSubmission,
     WritingSubmitReq,
     gen_id,
@@ -811,6 +813,161 @@ async def drill_streak(user_id: str = Depends(get_current_user_id)):
 @api.get("/drill/history")
 async def drill_history(user_id: str = Depends(get_current_user_id)):
     items = await db.daily_drills.find({"user_id": user_id}, {"_id": 0}).sort("date_str", -1).to_list(60)
+    return items
+
+
+# ===================== WEEKLY RECAP =====================
+def _iso_week_key(d: datetime = None) -> tuple:
+    d = d or datetime.now(timezone.utc)
+    iso = d.isocalendar()
+    return f"{iso.year}-W{iso.week:02d}"
+
+
+def _week_label(d: datetime = None) -> str:
+    d = d or datetime.now(timezone.utc)
+    iso = d.isocalendar()
+    monday = d - timedelta(days=d.weekday())
+    sunday = monday + timedelta(days=6)
+    if monday.month == sunday.month:
+        return f"{monday.strftime('%b %-d')}–{sunday.strftime('%-d, %Y')}"
+    return f"{monday.strftime('%b %-d')}–{sunday.strftime('%b %-d, %Y')}"
+
+
+async def _build_recap_payload(user_id: str) -> dict:
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=7)
+    since_iso = since.isoformat()
+
+    profile = await db.profiles.find_one({"user_id": user_id}, {"_id": 0}) or {}
+
+    speak = await db.speaking_sessions.find(
+        {"user_id": user_id, "status": "completed", "created_at": {"$gte": since_iso}, "score": {"$ne": None}},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(50)
+    write = await db.writing_submissions.find(
+        {"user_id": user_id, "created_at": {"$gte": since_iso}, "score": {"$ne": None}},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(50)
+    listen = await db.listening_attempts.find(
+        {"user_id": user_id, "created_at": {"$gte": since_iso}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    drills = await db.daily_drills.find(
+        {"user_id": user_id, "created_at": {"$gte": since_iso}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+
+    sp_crit = {}
+    for s in speak:
+        for k, v in ((s.get("score") or {}).get("criteria") or {}).items():
+            if isinstance(v, (int, float)):
+                sp_crit.setdefault(k, []).append(v)
+    wr_crit = {}
+    for w in write:
+        for k, v in ((w.get("score") or {}).get("criteria") or {}).items():
+            if isinstance(v, (int, float)):
+                wr_crit.setdefault(k, []).append(v)
+
+    # listening errors collected from attempts (we stored answers + test, can't easily reconstruct without re-grading; instead extract review-like data from test docs)
+    listening_errors = []
+    for a in listen[:5]:
+        t = await db.listening_tests.find_one({"id": a.get("test_id")}, {"_id": 0})
+        if not t:
+            continue
+        for sec in t.get("sections", []):
+            for q in sec.get("questions", []):
+                qn = str(q.get("q_number"))
+                user_ans = (a.get("answers", {}).get(qn) or "").strip().lower()
+                true_ans = str(q.get("answer", "")).strip().lower()
+                if user_ans and user_ans != true_ans:
+                    listening_errors.append(
+                        {"q": q.get("question"), "your": user_ans, "correct": true_ans, "explanation": q.get("explanation", "")}
+                    )
+
+    grammar_drills = []
+    vocab_drills = []
+    for d in drills:
+        for item in d.get("items", []):
+            if item.get("type") == "grammar":
+                for s in item.get("data", {}).get("sentences", []):
+                    grammar_drills.append(s)
+            elif item.get("type") == "vocab":
+                for c in item.get("data", {}).get("cards", []):
+                    vocab_drills.append(c)
+
+    metrics = {
+        "speaking_sessions": len(speak),
+        "writing_submissions": len(write),
+        "listening_attempts": len(listen),
+        "drills_completed": sum(1 for d in drills if d.get("completed")),
+        "drills_total": len(drills),
+    }
+
+    return {
+        "profile": profile,
+        "metrics": metrics,
+        "speak_criteria": {k: v for k, v in sp_crit.items()},
+        "write_criteria": {k: v for k, v in wr_crit.items()},
+        "listening_errors": listening_errors,
+        "grammar_drills": grammar_drills,
+        "vocab_drills": vocab_drills,
+    }
+
+
+@api.get("/recap/this-week")
+async def recap_this_week(user_id: str = Depends(get_current_user_id)):
+    week_str = _iso_week_key()
+    existing = await db.weekly_recaps.find_one(
+        {"user_id": user_id, "week_str": week_str}, {"_id": 0}
+    )
+    if existing:
+        return existing
+
+    payload = await _build_recap_payload(user_id)
+    metrics = payload["metrics"]
+    if sum(metrics.values()) == 0:
+        raise HTTPException(status_code=400, detail="Not enough activity this week — complete a session or drill first.")
+
+    profile = payload["profile"]
+    data = await recap_service.generate_weekly_recap(
+        week_label=_week_label(),
+        metrics=metrics,
+        speak_criteria=payload["speak_criteria"],
+        write_criteria=payload["write_criteria"],
+        listening_errors=payload["listening_errors"],
+        grammar_drills=payload["grammar_drills"],
+        vocab_drills=payload["vocab_drills"],
+        target_band=profile.get("target_band", 7.0),
+        native_language=profile.get("native_language", "Indonesian"),
+    )
+    if not data or "essay" not in data:
+        raise HTTPException(status_code=500, detail="Failed to generate recap — try again.")
+
+    recap = WeeklyRecap(
+        user_id=user_id,
+        week_str=week_str,
+        week_label=_week_label(),
+        title=data.get("title", f"Week {week_str}"),
+        headline=data.get("headline", ""),
+        essay=data.get("essay", ""),
+        common_errors=data.get("common_errors", []),
+        top_vocab=data.get("top_vocab", []),
+        next_week_focus=data.get("next_week_focus", ""),
+        wallpaper_quote=data.get("wallpaper_quote", ""),
+        metrics=metrics,
+    ).model_dump()
+    await db.weekly_recaps.insert_one(recap)
+    return {k: v for k, v in recap.items() if k != "_id"}
+
+
+@api.post("/recap/regenerate")
+async def recap_regenerate(user_id: str = Depends(get_current_user_id)):
+    week_str = _iso_week_key()
+    await db.weekly_recaps.delete_many({"user_id": user_id, "week_str": week_str})
+    return await recap_this_week(user_id=user_id)
+
+
+@api.get("/recap/history")
+async def recap_history(user_id: str = Depends(get_current_user_id)):
+    items = await db.weekly_recaps.find({"user_id": user_id}, {"_id": 0}).sort("week_str", -1).to_list(20)
     return items
 
 

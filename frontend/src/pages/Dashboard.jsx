@@ -100,6 +100,23 @@ export default function Dashboard() {
         </div>
       </button>
 
+      {/* Recap teaser */}
+      <button
+        onClick={() => navigate("/app/recap")}
+        data-testid="recap-teaser"
+        className="w-full text-left bg-white border border-[#E5E2DC] rounded-2xl p-5 hover:-translate-y-0.5 hover:shadow-md transition-all flex items-center gap-4"
+      >
+        <div className="h-12 w-12 rounded-xl bg-[#E07A5F]/15 flex items-center justify-center shrink-0">
+          <Sparkles className="h-6 w-6 text-[#E07A5F]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.2em] text-[#8A958F]">Weekly Recap</div>
+          <div className="font-serif-display text-base sm:text-lg mt-0.5">This week's lessons & wallpaper</div>
+          <div className="text-xs text-[#4A5550] mt-0.5">AI essay + top vocab + common errors + lock-screen quote</div>
+        </div>
+        <ArrowRight className="h-5 w-5 text-[#8A958F]" />
+      </button>
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <BigStat icon={Target} label="Target" value={target.toFixed(1)} tint="#2D6A4F" sub={profile?.test_date ? `Test ${profile.test_date}` : "No date set"} />

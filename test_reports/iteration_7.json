@@ -1,0 +1,32 @@
+{
+  "summary": "Iter7 — Weekly Recap feature tested end-to-end. Backend: 5/5 pytest passed (recap/this-week generates valid JSON with all required keys + 2145-char essay; second call returns cached recap in <2s; /recap/history sorted desc; /recap/regenerate produces new id same week_str; all existing endpoints — auth/me, profile, dashboard/stats, dashboard/pain-points, drill/streak, badges, speaking/topics, writing/prompts — still 200). Frontend at /app/recap: page renders with title 'Week of Jun 15–21 — Pattern Lock', large serif headline, 3-paragraph essay (2145 chars in recap-essay), 4 common errors (recap-errors with pattern/example/fix), 5 top vocab cards (recap-vocab with word/definition/example/best_used_in), next-week-focus chip, and recap-wallpaper at 300x540 dark gradient. Dashboard recap-teaser button is positioned AFTER daily-drill-card and navigates to /app/recap when clicked. recap-pdf-btn invokes window.print(). recap-wallpaper-btn renders via html2canvas and triggers data:image/png download (verified Blob/data URL created). recap-regen-btn becomes disabled during regeneration (loading state). No JS console errors. The pre-existing Recharts width/height warnings on dashboard are unchanged from iter6 (cosmetic).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Recharts width(-1)/height(-1) console warnings persist (cosmetic, carried over from iter6). Charts still render."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter7_recap.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "recap_service.py — uses week_label as session_id for _build_chat: recap-{week_label} contains spaces/em-dash; if the LLM client sanitises keys this is fine but using week_str (e.g. 2026-W25) would be more robust.",
+    "server.py _week_label uses '%-d' which is Linux-only (not portable to Windows) — acceptable for this Docker/Linux deploy.",
+    "server.py /api/recap/regenerate calls recap_this_week(user_id=user_id) directly bypassing the Depends() — this works because the function uses user_id as a default-arg name; but it's slightly fragile if signature changes. Consider extracting the cache-or-build logic into a helper called by both endpoints.",
+    "Recap.jsx — printableRef is declared but never used (only wallpaperRef is passed to downloadPNG). Dead code, can be removed.",
+    "Recap.jsx — html2canvas import (~50KB) is loaded eagerly on /app/recap even if user never exports; consider dynamic import() for code-splitting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter7_recap.py (new)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% — all recap UI + integration flows verified"},
+  "test_credentials": "PIN 123456 (default owner)",
+  "seed_data_creation": "Generated 2 weekly recaps for current ISO week (one from initial call, then replaced by /recap/regenerate). History now contains 1 recap for this week.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Owner has a fresh weekly recap cached for this ISO week (Jun 15-21, 2026 in test env). /api/recap/this-week returns instantly (<2s) due to cache. To force regeneration, hit POST /api/recap/regenerate (~25-30s). Empty-state path (400 'Not enough activity...') was NOT tested per spec instructions to avoid wiping DB. The recap-empty data-testid block exists in Recap.jsx if needed."
+}

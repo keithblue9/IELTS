@@ -197,6 +197,22 @@ class TTSReq(BaseModel):
     voice: str = "nova"
 
 
+# ---------- Weekly Recap ----------
+class WeeklyRecap(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=gen_id)
+    user_id: str
+    week_str: str  # ISO week like "2026-W24"
+    week_label: str  # human-friendly "Jun 10-16, 2026"
+    title: str
+    headline: str
+    essay: str
+    common_errors: List[Dict[str, Any]] = Field(default_factory=list)
+    top_vocab: List[Dict[str, Any]] = Field(default_factory=list)
+    next_week_focus: str = ""
+    wallpaper_quote: str = ""
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    created_at: str = Field(default_factory=now_iso)
 # ---------- Daily Drill ----------
 class DrillItemComplete(BaseModel):
     drill_id: str

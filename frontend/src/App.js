@@ -13,6 +13,7 @@ import Listening from "@/pages/Listening";
 import Reading from "@/pages/Reading";
 import Profile from "@/pages/Profile";
 import Drill from "@/pages/Drill";
+import Recap from "@/pages/Recap";
 import AppLayout from "@/components/AppLayout";
 
 function Protected({ children }) {
@@ -74,6 +75,7 @@ function App() {
             <Route path="/app/listening" element={<Shell><Listening /></Shell>} />
             <Route path="/app/reading" element={<Shell><Reading /></Shell>} />
             <Route path="/app/drill" element={<Shell><Drill /></Shell>} />
+            <Route path="/app/recap" element={<Shell><Recap /></Shell>} />
             <Route path="/app/profile" element={<Shell><Profile /></Shell>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
