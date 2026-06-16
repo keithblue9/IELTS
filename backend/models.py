@@ -15,6 +15,15 @@ def gen_id() -> str:
 
 
 # ---------- Auth & user profile ----------
+class PinLoginReq(BaseModel):
+    pin: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class ChangePinReq(BaseModel):
+    current_pin: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_pin: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
 class UserSignup(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=200)
@@ -118,6 +127,7 @@ class ListeningQuestion(BaseModel):
     question: str
     options: Optional[List[str]] = None  # for MCQ; null = fill-in
     answer: str  # ground truth (used for grading)
+    explanation: Optional[str] = None  # post-submit teaching
 
 
 class ListeningSection(BaseModel):
@@ -159,6 +169,7 @@ class ReadingQuestion(BaseModel):
     question: str
     options: Optional[List[str]] = None
     answer: str
+    explanation: Optional[str] = None
 
 
 class ReadingPassage(BaseModel):

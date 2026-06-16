@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 4 end-to-end testing on REACT_APP_BACKEND_URL preview. Backend: 17/19 new pytest checks pass; 2 failures uncovered a single real bug — explanation field leaks in /api/listening/tests AND /api/reading/passages list endpoints (only 'answer' is stripped, but per-question 'explanation' is returned, exposing answer rationale). All other iteration-4 features verified: PIN login (default 123456 -> 200, wrong -> 401), change-pin + REVERT BACK TO 123456 confirmed (default restored), wrong current_pin -> 400, writing/generate-prompt task=2 returns prompt>100 chars, listening generate + submit returns review[] with populated explanations, reading generate + submit returns review[] with explanations, dashboard/pain-points returns correct shape with weakest[] containing {label, band, tip} after sessions exist. Back-compat: /api/profile, /api/dashboard/stats, /api/tts all still 200. Frontend (1920x1080 + 414x896): 6 PIN boxes auto-submit on '123456' and redirect to /app, manifest.json + service-worker.js both 200, <link rel=manifest> present, #emergent-badge NOT in DOM, Dashboard greeting 'Hello, You.' + 4 stat cards + 4 skill cards + pain-points-panel rendering with weakest+strongest lists, Profile change-pin-section with all 4 testids works end-to-end and reverts cleanly, writing-generate-prompt-btn + listening-generate-btn present, mobile bottom nav (nav-dashboard-mobile/speaking/listening/reading/writing) all visible at 414x896. Two minor console warnings about chart width(-1) inside dashboard but not blocking. PIN successfully reverted to 123456 in both backend tests and frontend tests so the app remains accessible.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/listening/tests", "issue": "Returns per-question 'explanation' field. Projection only excludes sections.questions.answer; should also exclude sections.questions.explanation. Same bug as iter1 leak fix but missed for explanation field added in iter4.", "priority": "HIGH"},
+      {"endpoint": "GET /api/reading/passages", "issue": "Returns per-question 'explanation' field. Projection only excludes questions.answer; must also exclude questions.explanation.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/listening/generate", "issue": "Intermittent 502 from Cloudflare edge at ~60s. The LLM call sometimes exceeds the 60s ingress timeout (observed once in this run). Detail endpoint and fallback both work, but UI flow can fail randomly. Consider streaming the generation or reducing to 3 sections to consistently stay <55s."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Recharts container logs 4 warnings about width(-1) height(-1) — chart parent has no explicit min-width/min-height. Cosmetic only; chart still renders once layout settles."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter4_pin_explanations.py",
+    "/app/test_reports/pytest/iter4_results.xml"
+  ],
+  "action_items": [
+    "FIX: In /app/backend/server.py listening_tests(): change projection from {'_id': 0, 'sections.questions.answer': 0} to also exclude 'sections.questions.explanation': 0",
+    "FIX: In reading_passages_list(): change projection to also exclude 'questions.explanation': 0",
+    "(Optional) Reduce listening generate payload or split into 2 LLM calls to consistently stay under Cloudflare 60s edge timeout."
+  ],
+  "critical_code_review_comments": [
+    "server.py /listening/tests projection only strips answer, not the newly-added explanation — leaks IELTS answer rationale to anyone browsing past tests. Same flaw in /reading/passages.",
+    "/api/listening/generate occasionally times out at Cloudflare edge (60s). The single-call LLM design is fragile; consider returning 202+poll or shrinking the payload.",
+    "Dashboard recharts container has no explicit min-width/min-height; on first paint width=-1 warnings fire. Add minHeight to ResponsiveContainer.",
+    "PinLogin auto-submit is fine but there's no rate-limit on /api/auth/pin-login — only 6-digit space (10^6 combos). Worth adding simple per-IP throttle if exposed publicly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter4_pin_explanations.py (new)"
+  ],
+  "success_rate": {"backend": "89% (17/19 new checks; the 2 failures are a real bug)", "frontend": "100% (all flows from review request verified)"},
+  "test_credentials": "PIN 123456 (verified restored after change-pin test). Owner email owner@local auto-seeded.",
+  "seed_data_creation": "One additional speaking session, one writing submission, and a couple of listening/reading attempts were created on owner@local during tests to populate pain-points.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PIN auth, change-pin (with REVERT), writing/generate-prompt, listening+reading explanations on submit, and dashboard/pain-points all work. PWA + mobile safe-area + Emergent badge removal verified. Only outstanding backend bug: list endpoints leak the new 'explanation' field — fix in server.py projections for /listening/tests and /reading/passages. After main agent fixes the projection, just rerun the two failing tests in test_iter4_pin_explanations.py (TestListeningExplanations::test_list_endpoint_leak_check and TestReadingExplanations::test_reading_list_leak_check) to confirm.",
+  "rca_of_the_issue": "When iter4 added per-question 'explanation' fields to ListeningQuestion/ReadingQuestion, the developer remembered to strip it in the *detail* endpoints (/listening/tests/{id}, /reading/passages/{id}) and in generate response, but FORGOT to update the MongoDB projection on the LIST endpoints (listening_tests() line 501 and reading_passages_list() line 575) which still only strip the 'answer' field. Reproduction: login -> GET /api/listening/tests -> inspect any item.sections[].questions[].explanation — it is returned as plain text. Mitigation: add 'sections.questions.explanation': 0 (listening) and 'questions.explanation': 0 (reading) to the .find() projection dicts."
+}

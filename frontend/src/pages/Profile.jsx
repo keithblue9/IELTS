@@ -6,17 +6,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
+
+const WEAK = ["Fluency", "Lexical Resource", "Grammar", "Pronunciation", "Task Achievement", "Coherence"];
 
 export default function Profile() {
   const { user } = useAuth();
   const [p, setP] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [currPin, setCurrPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
 
   useEffect(() => { api.get("/profile").then((r) => setP(r.data)); }, []);
 
   const set = (k, v) => setP((prev) => ({ ...prev, [k]: v }));
+  const toggleWeak = (w) => set("weak_areas", p.weak_areas?.includes(w) ? p.weak_areas.filter((x) => x !== w) : [...(p.weak_areas || []), w]);
 
   const save = async () => {
     setBusy(true);
@@ -27,10 +34,25 @@ export default function Profile() {
         native_language: p.native_language, weak_areas: p.weak_areas,
       });
       setP(data);
-      toast.success("Profile saved");
+      toast.success("Settings saved");
     } catch (e) {
       toast.error("Failed to save");
     } finally { setBusy(false); }
+  };
+
+  const changePin = async () => {
+    if (!/^\d{6}$/.test(currPin) || !/^\d{6}$/.test(newPin)) {
+      toast.error("PIN must be 6 digits"); return;
+    }
+    if (newPin !== confirmPin) { toast.error("New PIN doesn't match confirmation"); return; }
+    setPinBusy(true);
+    try {
+      await api.post("/auth/change-pin", { current_pin: currPin, new_pin: newPin });
+      toast.success("PIN changed");
+      setCurrPin(""); setNewPin(""); setConfirmPin("");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to change PIN");
+    } finally { setPinBusy(false); }
   };
 
   if (!p) return <div className="text-[#8A958F]">Loading...</div>;
@@ -38,27 +60,27 @@ export default function Profile() {
   return (
     <div className="space-y-8 max-w-3xl" data-testid="profile-page">
       <header>
-        <div className="text-xs uppercase tracking-[0.2em] text-[#8A958F]">Account</div>
-        <h1 className="font-serif-display text-4xl mt-2">Your IELTS plan</h1>
-        <p className="text-[#4A5550] mt-3">{user?.name} · {user?.email}</p>
+        <div className="text-xs uppercase tracking-[0.2em] text-[#8A958F]">Settings</div>
+        <h1 className="font-serif-display text-3xl sm:text-4xl mt-2">Your IELTS plan</h1>
+        <p className="text-sm text-[#4A5550] mt-3">{user?.name}</p>
       </header>
 
-      <div className="bg-white border border-[#E5E2DC] rounded-2xl p-8 space-y-7">
+      <div className="bg-white border border-[#E5E2DC] rounded-2xl p-5 sm:p-8 space-y-7">
         <div>
           <Label className="text-sm">Target band</Label>
-          <div className="flex items-center gap-6 mt-3">
+          <div className="flex items-center gap-4 sm:gap-6 mt-3">
             <Slider value={[p.target_band]} min={4} max={9} step={0.5} onValueChange={(v) => set("target_band", v[0])} data-testid="profile-target-slider" />
             <span className="font-serif-display text-2xl text-[#2D6A4F] w-14 text-right">{p.target_band.toFixed(1)}</span>
           </div>
         </div>
         <div>
           <Label className="text-sm">Current band</Label>
-          <div className="flex items-center gap-6 mt-3">
+          <div className="flex items-center gap-4 sm:gap-6 mt-3">
             <Slider value={[p.current_band]} min={3} max={9} step={0.5} onValueChange={(v) => set("current_band", v[0])} data-testid="profile-current-slider" />
             <span className="font-serif-display text-2xl text-[#E07A5F] w-14 text-right">{p.current_band.toFixed(1)}</span>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
             <Label className="text-sm">Test date</Label>
             <Input data-testid="profile-test-date" type="date" value={p.test_date || ""} onChange={(e) => set("test_date", e.target.value)} className="mt-1.5" />
@@ -71,7 +93,7 @@ export default function Profile() {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           <div>
             <Label className="text-sm">Examiner voice</Label>
             <Select value={p.tutor_voice} onValueChange={(v) => set("tutor_voice", v)}>
@@ -97,9 +119,46 @@ export default function Profile() {
           <Label className="text-sm">Native language</Label>
           <Input data-testid="profile-native-input" value={p.native_language} onChange={(e) => set("native_language", e.target.value)} className="mt-1.5" />
         </div>
+        <div>
+          <Label className="text-sm">Weak areas</Label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+            {WEAK.map((w) => {
+              const active = p.weak_areas?.includes(w);
+              return (
+                <button key={w} type="button" onClick={() => toggleWeak(w)} data-testid={`profile-weak-${w.toLowerCase().replace(/\s/g,'-')}`} className={`text-left px-3 py-2 rounded-lg border text-sm transition-all ${active ? "bg-[#E8EFE9] border-[#2D6A4F]" : "bg-white border-[#E5E2DC]"}`}>{w}</button>
+              );
+            })}
+          </div>
+        </div>
 
-        <Button onClick={save} disabled={busy} data-testid="profile-save-btn" className="bg-[#2D6A4F] hover:bg-[#1B4332] text-white rounded-full px-6 h-11">
+        <Button onClick={save} disabled={busy} data-testid="profile-save-btn" className="bg-[#2D6A4F] hover:bg-[#1B4332] text-white rounded-full px-6 h-11 w-full sm:w-auto">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
+        </Button>
+      </div>
+
+      {/* Change PIN */}
+      <div className="bg-white border border-[#E5E2DC] rounded-2xl p-5 sm:p-8 space-y-5" data-testid="change-pin-section">
+        <div className="flex items-center gap-2">
+          <Lock className="h-4 w-4 text-[#2D6A4F]" />
+          <h2 className="font-serif-display text-xl">Change PIN</h2>
+        </div>
+        <p className="text-xs text-[#8A958F] -mt-2">6 digits. This is the only way to unlock the app.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <Label className="text-sm">Current PIN</Label>
+            <Input data-testid="curr-pin-input" type="password" inputMode="numeric" pattern="\d{6}" maxLength={6} value={currPin} onChange={(e) => setCurrPin(e.target.value.replace(/\D/g, ""))} className="mt-1.5 font-mono tracking-[0.4em]" />
+          </div>
+          <div>
+            <Label className="text-sm">New PIN</Label>
+            <Input data-testid="new-pin-input" type="password" inputMode="numeric" pattern="\d{6}" maxLength={6} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))} className="mt-1.5 font-mono tracking-[0.4em]" />
+          </div>
+          <div>
+            <Label className="text-sm">Confirm new PIN</Label>
+            <Input data-testid="confirm-pin-input" type="password" inputMode="numeric" pattern="\d{6}" maxLength={6} value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))} className="mt-1.5 font-mono tracking-[0.4em]" />
+          </div>
+        </div>
+        <Button onClick={changePin} disabled={pinBusy} data-testid="change-pin-btn" className="bg-[#1A201C] hover:bg-black text-white rounded-full px-6 h-11 w-full sm:w-auto">
+          {pinBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update PIN"}
         </Button>
       </div>
     </div>

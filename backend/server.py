@@ -22,9 +22,11 @@ from audio_service import synthesize_speech, transcribe_audio  # noqa: E402
 import llm_service  # noqa: E402
 from models import (  # noqa: E402
     AuthResponse,
+    ChangePinReq,
     ListeningAttempt,
     ListeningAttemptReq,
     ListeningTest,
+    PinLoginReq,
     Profile,
     ProfileUpdate,
     ReadingAttemptReq,
@@ -66,7 +68,62 @@ async def root():
     return {"service": "IELTS Mentor API", "status": "ok", "time": now_iso()}
 
 
-# ===================== AUTH =====================
+# ===================== AUTH (PIN-based, single owner) =====================
+OWNER_EMAIL = "owner@local"
+DEFAULT_PIN = "123456"
+
+
+async def ensure_owner() -> dict:
+    """Single-user app: make sure exactly one owner exists with a PIN."""
+    owner = await db.users.find_one({"email": OWNER_EMAIL})
+    if owner:
+        return owner
+    user_id = gen_id()
+    owner_doc = {
+        "id": user_id,
+        "email": OWNER_EMAIL,
+        "name": "You",
+        "password_hash": hash_password(DEFAULT_PIN),  # PIN stored hashed in same field
+        "created_at": now_iso(),
+        "is_owner": True,
+    }
+    await db.users.insert_one(owner_doc)
+    profile = Profile(user_id=user_id).model_dump()
+    await db.profiles.insert_one(profile)
+    return owner_doc
+
+
+@app.on_event("startup")
+async def startup_seed():
+    await ensure_owner()
+    logger.info("Owner user ready (PIN-based auth)")
+
+
+@api.post("/auth/pin-login", response_model=AuthResponse)
+async def pin_login(payload: PinLoginReq):
+    owner = await ensure_owner()
+    if not verify_password(payload.pin, owner["password_hash"]):
+        raise HTTPException(status_code=401, detail="Wrong PIN")
+    token = create_token(owner["id"], owner["email"])
+    return AuthResponse(
+        token=token,
+        user=UserOut(id=owner["id"], email=owner["email"], name=owner["name"], created_at=owner["created_at"]),
+    )
+
+
+@api.post("/auth/change-pin")
+async def change_pin(payload: ChangePinReq, user_id: str = Depends(get_current_user_id)):
+    user = await db.users.find_one({"id": user_id})
+    if not user or not verify_password(payload.current_pin, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Current PIN is wrong")
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"password_hash": hash_password(payload.new_pin)}},
+    )
+    return {"ok": True}
+
+
+# Legacy email/password endpoints — kept for backward-compat tests but not used by UI
 @api.post("/auth/signup", response_model=AuthResponse)
 async def signup(payload: UserSignup):
     existing = await db.users.find_one({"email": payload.email.lower()})
@@ -81,7 +138,6 @@ async def signup(payload: UserSignup):
         "created_at": now_iso(),
     }
     await db.users.insert_one(user_doc)
-    # default profile
     profile = Profile(user_id=user_id).model_dump()
     await db.profiles.insert_one(profile)
     token = create_token(user_id, user_doc["email"])
@@ -176,6 +232,75 @@ async def dashboard_stats(user_id: str = Depends(get_current_user_id)):
         "bands": bands,
         "overall_band": overall,
         "history": history[-20:],
+    }
+
+
+@api.get("/dashboard/pain-points")
+async def dashboard_pain_points(user_id: str = Depends(get_current_user_id)):
+    """Aggregate per-criterion averages across recent speaking & writing sessions to identify weak spots."""
+    speak = await db.speaking_sessions.find(
+        {"user_id": user_id, "status": "completed", "score": {"$ne": None}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    write = await db.writing_submissions.find(
+        {"user_id": user_id, "score": {"$ne": None}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    listen = await db.listening_attempts.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(20)
+
+    sp_crit = {"fluency": [], "lexical": [], "grammar": [], "pronunciation": []}
+    for s in speak:
+        c = (s.get("score") or {}).get("criteria") or {}
+        for k in sp_crit:
+            v = c.get(k)
+            if isinstance(v, (int, float)):
+                sp_crit[k].append(v)
+
+    wr_crit = {"task_achievement": [], "coherence_cohesion": [], "lexical_resource": [], "grammar_accuracy": []}
+    for w in write:
+        c = (w.get("score") or {}).get("criteria") or {}
+        for k in wr_crit:
+            v = c.get(k)
+            if isinstance(v, (int, float)):
+                wr_crit[k].append(v)
+
+    def avg(arr):
+        return round(sum(arr) / len(arr), 1) if arr else None
+
+    speaking_breakdown = {k.title(): avg(v) for k, v in sp_crit.items()}
+    writing_breakdown = {k.replace("_", " ").title(): avg(v) for k, v in wr_crit.items()}
+    listening_band = avg([a.get("band") for a in listen if isinstance(a.get("band"), (int, float))])
+
+    # Build flat list of all available scores
+    flat = []
+    for label, val in {**speaking_breakdown, **writing_breakdown, "Listening": listening_band}.items():
+        if val is not None:
+            flat.append({"label": label, "band": val})
+
+    # Identify weakest: bottom 3
+    flat_sorted = sorted(flat, key=lambda x: x["band"])
+    weakest = flat_sorted[:3]
+    strongest = list(reversed(flat_sorted))[:3]
+
+    # Tips per known criterion
+    TIP_MAP = {
+        "Fluency": "Reduce hesitations — try recording yourself answering 2-min prompts and listen back for filler words.",
+        "Lexical": "Build topic-based vocabulary (work, education, environment). Aim for 3-4 collocations per response.",
+        "Grammar": "Drill complex structures: conditionals, passive, relative clauses. Mix in at least one per paragraph.",
+        "Pronunciation": "Practise word stress and sentence intonation. Shadow a native speaker for 5 min/day.",
+        "Task Achievement": "Address every part of the prompt explicitly in your introduction and conclusion.",
+        "Coherence Cohesion": "Use varied linking words. One topic sentence per paragraph; signpost clearly.",
+        "Lexical Resource": "Replace common verbs (do, get, make) with precise synonyms. Avoid repetition.",
+        "Grammar Accuracy": "Proof-read for tense consistency and articles (a/an/the).",
+        "Listening": "Practise prediction before each section. Read questions during the example pause.",
+    }
+    weakest_with_tips = [{**w, "tip": TIP_MAP.get(w["label"], "Keep practising daily.")} for w in weakest]
+
+    return {
+        "speaking": speaking_breakdown,
+        "writing": writing_breakdown,
+        "listening": listening_band,
+        "weakest": weakest_with_tips,
+        "strongest": strongest,
+        "session_counts": {"speaking": len(speak), "writing": len(write), "listening": len(listen)},
     }
 
 
@@ -299,6 +424,16 @@ async def writing_prompts():
     return {"task1": WRITING_TASK1_PROMPTS, "task2": WRITING_TASK2_PROMPTS}
 
 
+@api.post("/writing/generate-prompt")
+async def writing_generate_prompt(task: int, hint: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
+    if task not in (1, 2):
+        raise HTTPException(status_code=400, detail="task must be 1 or 2")
+    data = await llm_service.generate_writing_prompt(task, hint or "")
+    if not data or "prompt" not in data:
+        raise HTTPException(status_code=500, detail="Failed to generate prompt")
+    return data
+
+
 @api.post("/writing/submit")
 async def writing_submit(payload: WritingSubmitReq, user_id: str = Depends(get_current_user_id)):
     if len(payload.response_text.strip().split()) < 30:
@@ -369,13 +504,14 @@ async def listening_tests():
 
 @api.get("/listening/tests/{test_id}")
 async def listening_test_detail(test_id: str, user_id: str = Depends(get_current_user_id)):
-    # Hide answers from response (frontend should not see them before submit)
+    # Hide answers + explanations from response (frontend should not see them before submit)
     t = await db.listening_tests.find_one({"id": test_id}, {"_id": 0})
     if not t:
         raise HTTPException(status_code=404, detail="Test not found")
     for sec in t.get("sections", []):
         for q in sec.get("questions", []):
             q.pop("answer", None)
+            q.pop("explanation", None)
     return t
 
 
@@ -391,6 +527,7 @@ async def listening_generate(topic_hint: Optional[str] = None, user_id: str = De
     for sec in safe.get("sections", []):
         for q in sec.get("questions", []):
             q.pop("answer", None)
+            q.pop("explanation", None)
     return safe
 
 
@@ -417,6 +554,7 @@ async def listening_submit(payload: ListeningAttemptReq, user_id: str = Depends(
                 "your_answer": payload.answers.get(qn, ""),
                 "correct_answer": q["answer"],
                 "is_correct": is_correct,
+                "explanation": q.get("explanation", ""),
             })
     band = llm_service.raw_to_band(correct, total)
     attempt = ListeningAttempt(
@@ -445,6 +583,7 @@ async def reading_passage_detail(passage_id: str, user_id: str = Depends(get_cur
         raise HTTPException(status_code=404, detail="Not found")
     for q in p.get("questions", []):
         q.pop("answer", None)
+        q.pop("explanation", None)
     return p
 
 
@@ -458,6 +597,7 @@ async def reading_generate(topic_hint: Optional[str] = None, user_id: str = Depe
     safe = {k: v for k, v in passage.items() if k != "_id"}
     for q in safe.get("questions", []):
         q.pop("answer", None)
+        q.pop("explanation", None)
     return safe
 
 
@@ -483,6 +623,7 @@ async def reading_submit(payload: ReadingAttemptReq, user_id: str = Depends(get_
             "your_answer": payload.answers.get(qn, ""),
             "correct_answer": q["answer"],
             "is_correct": is_correct,
+            "explanation": q.get("explanation", ""),
         })
     band = llm_service.raw_to_band(correct, total)
     return {"correct": correct, "total": total, "band": band, "review": review}

@@ -16,15 +16,8 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password });
-    localStorage.setItem("ielts_token", data.token);
-    setUser(data.user);
-    return data.user;
-  };
-
-  const signup = async (name, email, password) => {
-    const { data } = await api.post("/auth/signup", { name, email, password });
+  const loginPin = async (pin) => {
+    const { data } = await api.post("/auth/pin-login", { pin });
     localStorage.setItem("ielts_token", data.token);
     setUser(data.user);
     return data.user;
@@ -37,7 +30,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, loginPin, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );

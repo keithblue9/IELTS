@@ -2,10 +2,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
-import Landing from "@/pages/Landing";
-import Login from "@/pages/Login";
-import Signup from "@/pages/Signup";
-import Onboarding from "@/pages/Onboarding";
+import PinLogin from "@/pages/PinLogin";
 import Dashboard from "@/pages/Dashboard";
 import Speaking from "@/pages/Speaking";
 import Writing from "@/pages/Writing";
@@ -23,7 +20,7 @@ function Protected({ children }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -41,10 +38,7 @@ function App() {
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/onboarding" element={<Protected><Onboarding /></Protected>} />
+            <Route path="/" element={<PinLogin />} />
             <Route path="/app" element={<Shell><Dashboard /></Shell>} />
             <Route path="/app/speaking" element={<Shell><Speaking /></Shell>} />
             <Route path="/app/writing" element={<Shell><Writing /></Shell>} />

@@ -222,6 +222,8 @@ A test has 4 sections. Each section has 5 questions (mix MCQ + short fill-in, ma
 
 Scripts should be 180-260 words each (concise but containing all info to answer the 5 questions).
 
+IMPORTANT: Every question MUST include an "explanation" field that teaches the candidate WHY the correct answer is right — quote the exact phrase from the script that gives the answer, and explain the listening skill being tested (e.g., paraphrase recognition, number/date precision, signposting language).
+
 Return ONLY valid JSON of the exact shape:
 {
   "title": "Practice Test - ...",
@@ -232,13 +234,13 @@ Return ONLY valid JSON of the exact shape:
       "title": "...",
       "script": "Speaker A: ... Speaker B: ... (180-260 words, plain text)",
       "questions": [
-        {"q_number": 1, "question": "What is the woman's name?", "options": ["A. Jane", "B. Joan", "C. June"], "answer": "B"},
-        {"q_number": 2, "question": "She lives at ___ Park Avenue.", "options": null, "answer": "42"}
+        {"q_number": 1, "question": "What is the woman's name?", "options": ["A. Jane", "B. Joan", "C. June"], "answer": "B", "explanation": "The woman says 'J-O-A-N'. This tests spelling recognition. Distractor 'Jane' is phonetically similar — listen for the long 'oa' sound."},
+        {"q_number": 2, "question": "She lives at ___ Park Avenue.", "options": null, "answer": "42", "explanation": "She says 'number forty-two Park Avenue'. Always write numbers as digits unless told otherwise."}
       ]
     }
   ]
 }
-Sections 1-4 must contain q_numbers 1-5, 6-10, 11-15, 16-20 respectively. Total 20 questions."""
+Sections 1-4 must contain q_numbers 1-5, 6-10, 11-15, 16-20 respectively. Total 20 questions, each with an explanation."""
 
 
 async def generate_listening_test(topic_hint: str = "general") -> dict:
@@ -252,18 +254,19 @@ async def generate_listening_test(topic_hint: str = "general") -> dict:
     return parsed or {}
 
 
-READING_SYSTEM = """You generate IELTS Academic Reading passages with questions.
+READING_SYSTEM = """You generate IELTS Academic Reading passages with questions and teaching explanations.
+
 Return ONLY valid JSON:
 {
   "title": "...",
   "difficulty": "intermediate",
   "passage": "A 600-900 word academic passage on the given topic. Use paragraphs separated by blank lines.",
   "questions": [
-    {"q_number": 1, "question": "True/False/Not Given: ...", "options": ["True", "False", "Not Given"], "answer": "True"},
-    {"q_number": 2, "question": "Fill in: The author argues that ___", "options": null, "answer": "industrialization"}
+    {"q_number": 1, "question": "True/False/Not Given: ...", "options": ["True", "False", "Not Given"], "answer": "True", "explanation": "Paragraph 2 states '...exact supporting line...' which directly confirms the statement. T/F/NG tip: if the passage explicitly contradicts → False; if it's silent → Not Given."},
+    {"q_number": 2, "question": "Fill in: The author argues that ___", "options": null, "answer": "industrialization", "explanation": "Look at paragraph 4, line 'industrialization is the principal driver...'. The word is taken verbatim; do not paraphrase."}
   ]
 }
-Generate exactly 10 questions, mixing T/F/NG, MCQ, and short-answer."""
+Generate exactly 10 questions, mixing T/F/NG, MCQ, and short-answer. Every question MUST include an "explanation" field that quotes the supporting line from the passage and teaches the technique (skimming, scanning, locating, eliminating)."""
 
 
 async def generate_reading_passage(topic_hint: str = "science and society") -> dict:
@@ -271,6 +274,23 @@ async def generate_reading_passage(topic_hint: str = "science and society") -> d
     resp = await chat.send_message(
         UserMessage(text=f"Topic: {topic_hint}. Return JSON only.")
     )
+    parsed = _parse_json(resp if isinstance(resp, str) else str(resp))
+    return parsed or {}
+
+
+# ===================== WRITING PROMPT GENERATION =====================
+
+WRITING_PROMPT_SYSTEM = """You generate fresh IELTS Writing prompts. Each prompt must be original, exam-realistic, and end with the standard rubric instruction ("Write at least 150/250 words").
+Return ONLY valid JSON: {"id": "<short-id>", "title": "<5-8 word title>", "prompt": "<full prompt text including any data description for Task 1>"}"""
+
+
+async def generate_writing_prompt(task: int, hint: str = "") -> dict:
+    chat = _build_chat(f"gen-write-{task}", WRITING_PROMPT_SYSTEM)
+    if task == 1:
+        user = f"Generate a Task 1 Academic IELTS Writing prompt (chart/graph/diagram/letter). Topic hint: {hint or 'random'}. Include a brief textual description of the visual since this is text-only practice. End with 'Write at least 150 words.' Return JSON only."
+    else:
+        user = f"Generate a Task 2 IELTS Writing prompt (essay). Topic hint: {hint or 'random'}. Vary the question type (opinion / discussion / problem-solution / advantages-disadvantages). End with 'Write at least 250 words.' Return JSON only."
+    resp = await chat.send_message(UserMessage(text=user))
     parsed = _parse_json(resp if isinstance(resp, str) else str(resp))
     return parsed or {}
 

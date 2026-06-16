@@ -25,6 +25,19 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv01";
+  /* iOS safe-area baseline */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Reusable utility */
+.safe-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+.safe-top { padding-top: max(0rem, env(safe-area-inset-top)); }
+
+/* Hide platform badge */
+#emergent-badge, a[id="emergent-badge"] {
+  display: none !important;
+  visibility: hidden !important;
 }
 
 .font-serif-display {
