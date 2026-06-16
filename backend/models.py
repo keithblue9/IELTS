@@ -57,7 +57,9 @@ class Profile(BaseModel):
     current_band: float = 5.5
     test_date: Optional[str] = None  # iso date
     daily_minutes: int = 30
-    tutor_voice: str = "nova"  # OpenAI TTS voice
+    tutor_voice: str = "Bella"  # ElevenLabs voice name (see audio_service.VOICE_MAP)
+    tutor_voice_stability: float = 0.35  # 0-1; lower = more expressive
+    tutor_voice_style: float = 0.65       # 0-1; higher = more breathy/intimate
     tutor_personality: str = "encouraging"  # encouraging | strict | conversational
     native_language: str = "Indonesian"
     weak_areas: List[str] = Field(default_factory=list)
@@ -73,6 +75,8 @@ class ProfileUpdate(BaseModel):
     test_date: Optional[str] = None
     daily_minutes: Optional[int] = None
     tutor_voice: Optional[str] = None
+    tutor_voice_stability: Optional[float] = None
+    tutor_voice_style: Optional[float] = None
     tutor_personality: Optional[str] = None
     native_language: Optional[str] = None
     weak_areas: Optional[List[str]] = None
@@ -82,13 +86,13 @@ class ProfileUpdate(BaseModel):
 
 # ---------- Speaking ----------
 class SpeakingStartReq(BaseModel):
-    part: int = Field(ge=1, le=3)  # IELTS Speaking Part 1, 2, 3
+    part: int = Field(ge=1, le=3)
     topic: Optional[str] = None
 
 
 class SpeakingTurnReq(BaseModel):
     session_id: str
-    user_text: str  # transcript from STT (frontend will transcribe first via /api/stt)
+    user_text: str
 
 
 class SpeakingSession(BaseModel):
@@ -99,8 +103,8 @@ class SpeakingSession(BaseModel):
     topic: str
     cue_card: Optional[str] = None
     questions: List[str] = Field(default_factory=list)
-    messages: List[Dict[str, Any]] = Field(default_factory=list)  # [{role, content, audio_url?}]
-    status: str = "active"  # active | completed
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+    status: str = "active"
     score: Optional[Dict[str, Any]] = None
     created_at: str = Field(default_factory=now_iso)
     completed_at: Optional[str] = None
@@ -108,7 +112,7 @@ class SpeakingSession(BaseModel):
 
 # ---------- Writing ----------
 class WritingSubmitReq(BaseModel):
-    task: int = Field(ge=1, le=2)  # task 1 or 2
+    task: int = Field(ge=1, le=2)
     prompt: str
     response_text: str
 
@@ -121,7 +125,7 @@ class WritingSubmission(BaseModel):
     prompt: str
     response_text: str
     word_count: int = 0
-    score: Optional[Dict[str, Any]] = None  # overall band + criteria + feedback
+    score: Optional[Dict[str, Any]] = None
     created_at: str = Field(default_factory=now_iso)
 
 
@@ -129,15 +133,15 @@ class WritingSubmission(BaseModel):
 class ListeningQuestion(BaseModel):
     q_number: int
     question: str
-    options: Optional[List[str]] = None  # for MCQ; null = fill-in
-    answer: str  # ground truth (used for grading)
-    explanation: Optional[str] = None  # post-submit teaching
+    options: Optional[List[str]] = None
+    answer: str
+    explanation: Optional[str] = None
 
 
 class ListeningSection(BaseModel):
-    section: int  # 1-4
+    section: int
     title: str
-    script: str  # narrative TTS will speak
+    script: str
     questions: List[ListeningQuestion]
 
 
@@ -152,7 +156,7 @@ class ListeningTest(BaseModel):
 
 class ListeningAttemptReq(BaseModel):
     test_id: str
-    answers: Dict[str, str]  # {"1": "A", "2": "library", ...}
+    answers: Dict[str, str]
 
 
 class ListeningAttempt(BaseModel):
@@ -194,7 +198,31 @@ class ReadingAttemptReq(BaseModel):
 # ---------- TTS / STT ----------
 class TTSReq(BaseModel):
     text: str
-    voice: str = "nova"
+    voice: str = "Bella"
+    stability: Optional[float] = None
+    style: Optional[float] = None
+
+
+# ---------- Daily Drill ----------
+class DailyDrill(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=gen_id)
+    user_id: str
+    date_str: str
+    day_index: int = 1
+    title: str = ""
+    focus_area: str = ""
+    estimated_minutes: int = 8
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+    completed_items: List[int] = Field(default_factory=list)
+    completed: bool = False
+    xp_awarded: int = 0
+    created_at: str = Field(default_factory=now_iso)
+
+
+class DrillItemComplete(BaseModel):
+    drill_id: str
+    item_index: int
 
 
 # ---------- Weekly Recap ----------
@@ -202,37 +230,14 @@ class WeeklyRecap(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=gen_id)
     user_id: str
-    week_str: str  # ISO week like "2026-W24"
-    week_label: str  # human-friendly "Jun 10-16, 2026"
-    title: str
-    headline: str
-    essay: str
+    week_str: str  # ISO week e.g. "2026-W25"
+    week_label: str  # human "Jun 15–21"
+    title: str = ""
+    headline: str = ""
+    essay: str = ""
     common_errors: List[Dict[str, Any]] = Field(default_factory=list)
     top_vocab: List[Dict[str, Any]] = Field(default_factory=list)
     next_week_focus: str = ""
     wallpaper_quote: str = ""
     metrics: Dict[str, Any] = Field(default_factory=dict)
-    created_at: str = Field(default_factory=now_iso)
-# ---------- Daily Drill ----------
-class DrillItemComplete(BaseModel):
-    drill_id: str
-    item_index: int
-    result: Optional[Dict[str, Any]] = None  # e.g., {"correct": 2, "total": 3}
-
-
-class DailyDrill(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=gen_id)
-    user_id: str
-    date_str: str  # YYYY-MM-DD
-    day_index: int = 1
-    title: str = ""
-    focus_area: str = ""
-    estimated_minutes: int = 8
-    items: List[Dict[str, Any]] = Field(default_factory=list)  # generated content
-    completed_items: List[int] = Field(default_factory=list)  # item indexes completed
-    item_results: Dict[str, Any] = Field(default_factory=dict)  # {"<idx>": {...}}
-    xp_earned: int = 0
-    completed: bool = False
-    completed_at: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)

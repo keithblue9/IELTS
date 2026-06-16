@@ -1,10 +1,9 @@
 """Daily Drill content generator (calibrated 7-10 min routine for busy learners)."""
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import Dict, List
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-
+from llm_compat import LlmChat, UserMessage  # local shim
 from llm_service import _build_chat, _parse_json  # reuse
 
 DRILL_SYSTEM = """You design ULTRA-EFFICIENT IELTS daily drills for busy professionals (target ~7-10 minutes total).
@@ -33,9 +32,9 @@ Output ONE JSON with EXACTLY 4 items in this order, calibrated to the user's wea
       "data": {
         "script": "A 90-130 word monologue or short dialogue. Plain text, complete sentences.",
         "questions": [
-          {"q_number": 1, "question": "What does the speaker recommend?", "options": ["A. ...", "B. ...", "C. ..."], "answer": "B", "explanation": "The speaker says '...exact quote...'. Tip: listen for the keyword 'should' or 'recommend'."},
-          {"q_number": 2, "question": "Fill in: The meeting is at ___ pm.", "options": null, "answer": "3:30", "explanation": "Number recognition — write times as digits."},
-          {"q_number": 3, "question": "True/False/NG: ...", "options": ["True", "False", "Not Given"], "answer": "False", "explanation": "Contradicts the line '...'. T/F/NG tip: contradiction = False."}
+          {"q_number": 1, "question": "What does the speaker recommend?", "options": ["A. ...", "B. ...", "C. ..."], "answer": "B", "explanation": "..."},
+          {"q_number": 2, "question": "Fill in: The meeting is at ___ pm.", "options": null, "answer": "3:30", "explanation": "..."},
+          {"q_number": 3, "question": "True/False/NG: ...", "options": ["True", "False", "Not Given"], "answer": "False", "explanation": "..."}
         ]
       }
     },
@@ -47,7 +46,7 @@ Output ONE JSON with EXACTLY 4 items in this order, calibrated to the user's wea
         "prompt": "A Part 1 IELTS speaking question. Single sentence.",
         "ielts_part": 1,
         "expected_seconds": 60,
-        "model_answer": "A polished band-8 example response (50-80 words) showing how to structure the answer with linking words and a topic-specific lexical item.",
+        "model_answer": "A polished band-8 example response (50-80 words).",
         "tips": ["Use a clear opening (Well, …)", "Include one specific example", "End with a brief reason or feeling"]
       }
     },
@@ -58,7 +57,7 @@ Output ONE JSON with EXACTLY 4 items in this order, calibrated to the user's wea
       "data": {
         "focus": "e.g. articles, tense consistency, prepositions",
         "sentences": [
-          {"wrong": "He has went to London last year.", "fixed": "He went to London last year.", "explanation": "Past time marker 'last year' requires simple past — not present perfect."},
+          {"wrong": "He has went to London last year.", "fixed": "He went to London last year.", "explanation": "..."},
           {"wrong": "...", "fixed": "...", "explanation": "..."},
           {"wrong": "...", "fixed": "...", "explanation": "..."}
         ]
@@ -67,7 +66,7 @@ Output ONE JSON with EXACTLY 4 items in this order, calibrated to the user's wea
   ]
 }
 
-Make content fresh and exam-realistic. Vary themes daily. Calibrate difficulty to the target band. The grammar sentences should target the user's native-language interference pattern when relevant."""
+Make content fresh and exam-realistic. Vary themes daily. Calibrate difficulty to the target band."""
 
 
 async def generate_daily_drill(weak_area: str, target_band: float, native_language: str, day_index: int) -> dict:

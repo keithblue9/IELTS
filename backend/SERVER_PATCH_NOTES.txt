@@ -1,0 +1,56 @@
+# ===========================================================================
+# PATCH UNTUK server.py — ganti BAGIAN-BAGIAN INI di file server.py kamu
+# yang udah ada di repo. Yang lain biarin aja.
+# ===========================================================================
+
+# -----------------------------------------------------------
+# 1) BAGIAN ATAS — IMPORTS & CORS dynamic
+# -----------------------------------------------------------
+# Cari baris:
+#   app = FastAPI(title="IELTS Mentor API")
+#   api = APIRouter(prefix="/api")
+# 
+# Di ATAS itu pastikan ada import os (udah ada).
+# Di BAWAH "app = FastAPI(...)" tambahin CORS middleware (kalau belum ada):
+
+cors_origins_env = os.environ.get("CORS_ORIGINS", "*")
+cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# (Note: import CORSMiddleware sudah ada di file lama:
+#   from starlette.middleware.cors import CORSMiddleware
+# Pastikan ada. Kalau belum, tambahin.)
+
+
+# -----------------------------------------------------------
+# 2) ENDPOINT /api/tts — REPLACE seluruh fungsi tts() yang lama
+# -----------------------------------------------------------
+
+@api.post("/tts")
+async def tts(payload: TTSReq, user_id: str = Depends(get_current_user_id)):
+    if not payload.text.strip():
+        raise HTTPException(status_code=400, detail="Empty text")
+
+    # Pull stability/style from profile if not provided in request
+    profile = await db.profiles.find_one({"user_id": user_id}, {"_id": 0}) or {}
+    stability = payload.stability if payload.stability is not None else profile.get("tutor_voice_stability", 0.35)
+    style = payload.style if payload.style is not None else profile.get("tutor_voice_style", 0.65)
+    voice = payload.voice or profile.get("tutor_voice", "Bella")
+
+    try:
+        audio = await synthesize_speech(
+            payload.text,
+            voice=voice,
+            stability=stability,
+            style=style,
+        )
+    except Exception as e:
+        logger.error(f"TTS error: {e}")
+        raise HTTPException(status_code=500, detail="TTS failed")
+    return Response(content=audio, media_type="audio/mpeg")
