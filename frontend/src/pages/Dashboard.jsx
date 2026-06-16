@@ -113,8 +113,8 @@ export default function Dashboard() {
         <div className="lg:col-span-7 bg-white border border-[#E5E2DC] rounded-2xl p-5 sm:p-6">
           <div className="text-xs uppercase tracking-[0.2em] text-[#8A958F]">Skill radar</div>
           <h3 className="font-serif-display text-xl sm:text-2xl mt-1">Where you stand</h3>
-          <div className="h-64 sm:h-72 mt-2">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64 sm:h-72 mt-2" style={{ minHeight: 240 }}>
+            <ResponsiveContainer width="100%" height="100%" minHeight={220}>
               <RadarChart data={radarData}>
                 <PolarGrid stroke="#E5E2DC" />
                 <PolarAngleAxis dataKey="skill" tick={{ fill: "#4A5550", fontSize: 11 }} />
@@ -127,9 +127,9 @@ export default function Dashboard() {
         <div className="lg:col-span-5 bg-white border border-[#E5E2DC] rounded-2xl p-5 sm:p-6">
           <div className="text-xs uppercase tracking-[0.2em] text-[#8A958F]">Progression</div>
           <h3 className="font-serif-display text-xl sm:text-2xl mt-1">Band history</h3>
-          <div className="h-56 sm:h-64 mt-4">
+          <div className="h-56 sm:h-64 mt-4" style={{ minHeight: 220 }}>
             {history.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minHeight={200}>
                 <LineChart data={history}>
                   <XAxis dataKey="date" tick={{ fill: "#8A958F", fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis domain={[3, 9]} tick={{ fill: "#8A958F", fontSize: 11 }} axisLine={false} tickLine={false} />

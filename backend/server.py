@@ -498,7 +498,10 @@ async def writing_submission_detail(submission_id: str, user_id: str = Depends(g
 # ===================== LISTENING =====================
 @api.get("/listening/tests")
 async def listening_tests():
-    items = await db.listening_tests.find({}, {"_id": 0, "sections.questions.answer": 0}).sort("created_at", -1).to_list(50)
+    items = await db.listening_tests.find(
+        {},
+        {"_id": 0, "sections.questions.answer": 0, "sections.questions.explanation": 0},
+    ).sort("created_at", -1).to_list(50)
     return items
 
 
@@ -572,7 +575,10 @@ async def listening_submit(payload: ListeningAttemptReq, user_id: str = Depends(
 # ===================== READING =====================
 @api.get("/reading/passages")
 async def reading_passages_list():
-    items = await db.reading_passages.find({}, {"_id": 0, "questions.answer": 0}).sort("created_at", -1).to_list(50)
+    items = await db.reading_passages.find(
+        {},
+        {"_id": 0, "questions.answer": 0, "questions.explanation": 0},
+    ).sort("created_at", -1).to_list(50)
     return items
 
 
