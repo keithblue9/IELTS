@@ -1,0 +1,100 @@
+{
+  "theme_and_archetype": {
+    "theme": "Light",
+    "archetype": "Archetype 1 (Organic & Earthy)",
+    "description": "A premium, calm, and highly focused learning environment. Blends the editorial sophistication of Notion/Linear with an academic, trusting vibe to reduce the stress of IELTS preparation. Avoids generic SaaS purple/blue."
+  },
+  "typography": {
+    "rules": "Avoid Inter. Use tight letter spacing for headings and generous line height for reading passages.",
+    "fonts": {
+      "heading": {
+        "family": "Newsreader",
+        "fallback": "serif",
+        "weights": [400, 500, 700],
+        "usage": "H1-H4, Testimonials, Hero Headlines, Score Numbers. Brings an academic, trustworthy, and editorial feel."
+      },
+      "body": {
+        "family": "Outfit",
+        "fallback": "sans-serif",
+        "weights": [300, 400, 500, 600],
+        "usage": "Paragraphs, UI elements, Dashboard labels, Buttons. Clean, geometric, and modern to balance the serif."
+      }
+    }
+  },
+  "color_palette": {
+    "background": {
+      "base": "#F9F8F6",
+      "surface": "#FFFFFF",
+      "description": "Bone white/Warm pearl for the main app background to reduce eye strain during long reading/writing sessions. Pure white for cards and focus areas."
+    },
+    "text": {
+      "primary": "#1A201C",
+      "secondary": "#4A5550",
+      "muted": "#8A958F",
+      "description": "Deep Forest Black instead of pure #000000 for a softer, organic contrast."
+    },
+    "accents": {
+      "primary": "#2D6A4F",
+      "primary_hover": "#1B4332",
+      "secondary": "#E07A5F",
+      "highlight": "#E9C46A",
+      "description": "Rich Forest Green for primary actions (trust/growth). Terracotta for the AI Voice Orb, warnings, and alerts. Muted Gold for streaks and success highlights."
+    }
+  },
+  "layout_principles": {
+    "marketing_page": {
+      "grid": "Asymmetrical Tetris Grid (grid-cols-1 md:grid-cols-12 gap-8).",
+      "hero": "Generous spacing. Hero text on left (col-span-7), abstract nature texture or student image on right (col-span-5) with a slight offset. No heavy box shadows.",
+      "components": "Custom HTML/Tailwind for layouts, heavily utilize padding (p-12 to p-24) to create breathing room."
+    },
+    "dashboard": {
+      "grid": "Control Room Grid. Dense, strictly aligned. grid-cols-1 md:grid-cols-4 gap-6.",
+      "cards": "Subtle Neumorphism or Flat with 1px border. bg-white, border-[#E5E5E5], rounded-xl. Shadow only on hover."
+    },
+    "practice_room": {
+      "layout": "Minimalist Zen layout. Max-w-3xl centered. Distraction-free.",
+      "writing_editor": "Looks like an editorial notepad. High line-height (leading-loose), max-w-prose for optimal reading."
+    }
+  },
+  "voice_ui_patterns": {
+    "ai_tutor_orb": {
+      "visuals": "A central, breathing orb representing the AI mentor.",
+      "colors": "bg-gradient-to-br from-[#E07A5F] to-[#E9C46A] (Terracotta to Gold) for a warm, humanistic feel.",
+      "animation": "Framer motion scale and opacity pulse during 'Listening' state. Audio waveform during 'Speaking' state.",
+      "transcript": "Real-time transcript fades in smoothly below the orb. User text aligned right (muted grey bg), AI text aligned left (transparent bg, bold serif font)."
+    }
+  },
+  "score_visualization": {
+    "overall_band": "Large bold serif typography (e.g., '7.5') enclosed in a circular SVG progress dial (stroke color: #2D6A4F).",
+    "skills_breakdown": "Use Recharts to render a Radar Chart for the 4 skills (Fluency, Lexical, Grammar, Pronunciation) to show balance, or crisp horizontal progress bars.",
+    "history": "Line chart showing band score progression over time, removing grid lines for a cleaner, editorial look."
+  },
+  "component_instructions": {
+    "forms": "Use Shadcn Form, Input, Select. Customize to have rounded-lg and focus:ring-[#2D6A4F].",
+    "buttons": "Shadcn Button. Primary uses bg-[#2D6A4F]. Add hover lift (-translate-y-0.5) and transition-transform.",
+    "tabs": "Shadcn Tabs. Override fixed heights. Use for switching between Task 1 / Task 2 in Writing.",
+    "testing": "MANDATORY: Add `data-testid` attributes to all interactive elements (e.g., `data-testid=\"start-speaking-btn\"`, `data-testid=\"target-band-select\"`)."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1563737590014-5d5c37378130?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwyfHxzdHVkZW50JTIwc3R1ZHlpbmclMjBsaWJyYXJ5JTIwbGFwdG9wfGVufDB8fHx8MTc4MTU3ODg0OXww&ixlib=rb-4.1.0&q=85",
+      "category": "hero_background",
+      "description": "Student studying with a laptop. Use for the Landing Page Hero section to establish context."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1543269664-647163ef2ee4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwyfHxhc2lhbiUyMHN0dWRlbnQlMjBzbWlsaW5nJTIwbGFwdG9wfGVufDB8fHx8MTc4MTU3ODg0OXww&ixlib=rb-4.1.0&q=85",
+      "category": "testimonial_avatar",
+      "description": "Asian student smiling with a laptop. Use in the Testimonials or Success Stories section to build trust with the target demographic."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1664764731538-69a2b571e5a6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwxfHxhc2lhbiUyMHN0dWRlbnQlMjBzbWlsaW5nJTIwbGFwdG9wfGVufDB8fHx8MTc4MTU3ODg0OXww&ixlib=rb-4.1.0&q=85",
+      "category": "testimonial_avatar",
+      "description": "Smiling individual. Use for user avatars in testimonials or mock dashboard profiles."
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1548362851-ea052637ad64?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1Mjh8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwYWJzdHJhY3QlMjBuYXR1cmUlMjB0ZXh0dXJlfGVufDB8fHx8MTc4MTU3ODg0OXww&ixlib=rb-4.1.0&q=85",
+      "category": "abstract_texture",
+      "description": "Minimalist abstract texture. Use as a soft background overlay (with low opacity) in the AI Speaking Practice room to create a calm atmosphere."
+    }
+  ]
+}
