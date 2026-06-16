@@ -1,0 +1,36 @@
+{
+  "summary": "Completed comprehensive frontend E2E testing on the Ascent IELTS app via Playwright against REACT_APP_BACKEND_URL (preview URL). All 9 user-facing flows in the review request PASS. Verified: Landing hero + CTA, Signup -> /onboarding, 3-step Onboarding -> /app, Dashboard greeting + 4 stat cards + 4 skill cards + skill-card navigation to all 4 routes, Writing Task 2 scoring (got band 5.5 with criteria bars), Listening generate (~50s) + section play + answer click + submit, Reading generate (~30s) + answer click + submit (Band 3.5 toast), Profile voice change + target slider save (toast confirmed), Speaking session start (orb + opener text + mic button visible — real recording skipped per instructions), Logout -> landing. Two minor copy/data-shape issues noted below but no blocking bugs.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard 'Continue training' Listening card",
+        "issues": ["Copy says '4-section narrated tests, 40 questions.' but actual generated tests have 4x5 = 20 questions (per iteration_2 backend trade-off). Copy should read '20 questions' or '~20 questions' to avoid misleading users."]
+      },
+      {
+        "screen": "Dashboard greeting",
+        "issues": ["Greeting renders only the first token of the user's name (e.g., 'Hello, Test.' when signup name was 'Test Runner'). Likely intentional (name.split(' ')[0]) but worth confirming with design — for users with single-token names it's fine, for multi-token names the rest of the name is silently dropped."]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "(Minor) Update Listening card copy on Dashboard from '40 questions' to '20 questions' to match the backend's 4x5 generation (changed in iteration_2 to stay under Cloudflare 60s timeout).",
+    "(Optional) Decide whether to render full name vs first-name-only in Dashboard greeting; current behaviour drops surnames silently."
+  ],
+  "critical_code_review_comments": [
+    "Reading question 'options' are plain <button> elements without role='radio' or input semantics — works visually and submits fine, but a11y-wise they should be radiogroup/radio for screen readers.",
+    "Both Reading and Listening submit endpoints return result via a sonner toast (e.g., 'Band 3.5 · 0/10') with no in-page persistent result section visible after submit on Reading; users have to read the toast quickly. Consider rendering a persistent result card.",
+    "Listening floating bottom bar ('Answered X/20') sits on top of the page and can overlap the submit button if the section is short — submit click still landed via data-testid in test, but on smaller viewports it could occlude content. Worth a z-index/sticky review."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "not retested (100% per iteration_2)", "frontend": "100% (9/9 flows)" },
+  "test_credentials": "Existing user test@demo.io / test123 (from /app/memory/test_credentials.md) used for Login/Writing/Listening/Reading/Profile/Logout/Speaking; fresh TEST_<uuid>@demo.io created via UI signup for Landing+Signup+Onboarding+Dashboard flow.",
+  "seed_data_creation": "One new user created during signup test (TEST_a6db9167@demo.io style). One writing submission, one reading attempt, one listening attempt added to test@demo.io account.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 9 frontend flows from the review request are green against preview URL. Signup correctly redirects to /onboarding; Onboarding 3 steps -> /app. Skill cards on Dashboard all navigate. Writing Task 2 (with one of the 4 prompt options) returns overall_band + 4 criteria bars in writing-score-card within ~30-40s. Listening generate takes ~50s and yields 4 sections x 5 questions (20 total); section 1 play button works; submit triggers band toast. Reading generate takes ~30s; submit triggers band toast. Profile save triggers 'Plan saved!'-style toast. Logout from top-nav (data-testid='logout-btn') clears session and redirects to '/'. Speaking start-session call works (returns Aria opener + sets mic-start visible) — real microphone recording NOT testable in headless. No console errors, no pageerrors observed during the run.",
+  "rca_of_the_issue": "N/A — no defects requiring RCA. Two minor copy/data-shape suggestions captured under design_issues and action_items."
+}
