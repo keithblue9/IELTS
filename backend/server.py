@@ -19,10 +19,13 @@ load_dotenv(ROOT_DIR / ".env")
 
 from auth import create_token, get_current_user_id, hash_password, verify_password  # noqa: E402
 from audio_service import synthesize_speech, transcribe_audio  # noqa: E402
+import drill_service  # noqa: E402
 import llm_service  # noqa: E402
 from models import (  # noqa: E402
     AuthResponse,
     ChangePinReq,
+    DailyDrill,
+    DrillItemComplete,
     ListeningAttempt,
     ListeningAttemptReq,
     ListeningTest,
@@ -660,6 +663,155 @@ async def tts(payload: TTSReq, user_id: str = Depends(get_current_user_id)):
         logger.error(f"TTS error: {e}")
         raise HTTPException(status_code=500, detail="TTS failed")
     return Response(content=audio, media_type="audio/mpeg")
+
+
+# ===================== DAILY DRILL =====================
+def _today_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+async def _compute_streak(user_id: str) -> int:
+    """Count consecutive days (ending today or yesterday) where a drill was completed."""
+    drills = await db.daily_drills.find(
+        {"user_id": user_id, "completed": True}, {"_id": 0, "date_str": 1}
+    ).sort("date_str", -1).to_list(120)
+    if not drills:
+        return 0
+    today = datetime.now(timezone.utc).date()
+    completed_days = {d["date_str"] for d in drills}
+    streak = 0
+    cursor = today
+    # allow starting from today OR yesterday
+    if cursor.isoformat() not in completed_days:
+        from datetime import timedelta
+        cursor = cursor - timedelta(days=1)
+        if cursor.isoformat() not in completed_days:
+            return 0
+    from datetime import timedelta
+    while cursor.isoformat() in completed_days:
+        streak += 1
+        cursor = cursor - timedelta(days=1)
+    return streak
+
+
+async def _pick_weak_area(user_id: str) -> str:
+    """Pick the single most pressing weak area for today's drill."""
+    speak = await db.speaking_sessions.find(
+        {"user_id": user_id, "status": "completed", "score": {"$ne": None}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(10)
+    write = await db.writing_submissions.find(
+        {"user_id": user_id, "score": {"$ne": None}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(10)
+
+    avg_map = {}
+    for s in speak:
+        c = (s.get("score") or {}).get("criteria") or {}
+        for k, v in c.items():
+            if isinstance(v, (int, float)):
+                avg_map.setdefault(k.title(), []).append(v)
+    for w in write:
+        c = (w.get("score") or {}).get("criteria") or {}
+        for k, v in c.items():
+            if isinstance(v, (int, float)):
+                avg_map.setdefault(k.replace("_", " ").title(), []).append(v)
+
+    if not avg_map:
+        # fallback: take from profile weak_areas, or default
+        profile = await db.profiles.find_one({"user_id": user_id}, {"_id": 0}) or {}
+        if profile.get("weak_areas"):
+            return profile["weak_areas"][0]
+        return "Lexical Resource"
+
+    averaged = {k: sum(v) / len(v) for k, v in avg_map.items()}
+    return min(averaged, key=averaged.get)
+
+
+@api.get("/drill/today")
+async def drill_today(user_id: str = Depends(get_current_user_id)):
+    today = _today_str()
+    existing = await db.daily_drills.find_one({"user_id": user_id, "date_str": today}, {"_id": 0})
+    if existing:
+        return existing
+
+    # generate fresh drill
+    profile = await db.profiles.find_one({"user_id": user_id}, {"_id": 0}) or {}
+    target_band = profile.get("target_band", 7.0)
+    native = profile.get("native_language", "Indonesian")
+    weak = await _pick_weak_area(user_id)
+    day_count = await db.daily_drills.count_documents({"user_id": user_id})
+
+    data = await drill_service.generate_daily_drill(
+        weak_area=weak, target_band=target_band, native_language=native, day_index=day_count + 1
+    )
+    if not data or "items" not in data:
+        raise HTTPException(status_code=500, detail="Failed to generate today's drill — try again in a moment.")
+
+    drill = DailyDrill(
+        user_id=user_id,
+        date_str=today,
+        day_index=day_count + 1,
+        title=data.get("title", f"Day {day_count + 1}"),
+        focus_area=data.get("focus_area", weak),
+        estimated_minutes=int(data.get("estimated_minutes", 8)),
+        items=data.get("items", []),
+    ).model_dump()
+    await db.daily_drills.insert_one(drill)
+    return {k: v for k, v in drill.items() if k != "_id"}
+
+
+@api.post("/drill/complete-item")
+async def drill_complete_item(payload: DrillItemComplete, user_id: str = Depends(get_current_user_id)):
+    drill = await db.daily_drills.find_one({"id": payload.drill_id, "user_id": user_id}, {"_id": 0})
+    if not drill:
+        raise HTTPException(status_code=404, detail="Drill not found")
+    completed = list(drill.get("completed_items", []))
+    if payload.item_index in completed:
+        return drill
+    completed.append(payload.item_index)
+    item_results = dict(drill.get("item_results", {}))
+    if payload.result is not None:
+        item_results[str(payload.item_index)] = payload.result
+
+    total_items = len(drill.get("items", []))
+    fully_done = len(completed) >= total_items
+    xp = drill.get("xp_earned", 0) + 25
+    update = {
+        "completed_items": completed,
+        "item_results": item_results,
+        "xp_earned": xp,
+    }
+    if fully_done and not drill.get("completed"):
+        update["completed"] = True
+        update["completed_at"] = now_iso()
+        update["xp_earned"] = xp + 25  # completion bonus
+    await db.daily_drills.update_one({"id": payload.drill_id}, {"$set": update})
+    refreshed = await db.daily_drills.find_one({"id": payload.drill_id}, {"_id": 0})
+    return refreshed
+
+
+@api.get("/drill/streak")
+async def drill_streak(user_id: str = Depends(get_current_user_id)):
+    streak = await _compute_streak(user_id)
+    total_xp = 0
+    cur = db.daily_drills.find({"user_id": user_id}, {"_id": 0, "xp_earned": 1})
+    async for d in cur:
+        total_xp += d.get("xp_earned", 0)
+    completed_count = await db.daily_drills.count_documents({"user_id": user_id, "completed": True})
+    today_done = await db.daily_drills.find_one(
+        {"user_id": user_id, "date_str": _today_str(), "completed": True}
+    )
+    return {
+        "streak_days": streak,
+        "total_xp": total_xp,
+        "completed_count": completed_count,
+        "today_done": bool(today_done),
+    }
+
+
+@api.get("/drill/history")
+async def drill_history(user_id: str = Depends(get_current_user_id)):
+    items = await db.daily_drills.find({"user_id": user_id}, {"_id": 0}).sort("date_str", -1).to_list(60)
+    return items
 
 
 # ===================== APP WIRING =====================

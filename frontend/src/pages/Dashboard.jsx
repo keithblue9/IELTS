@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Mic, PenLine, Headphones, BookOpen, Flame, Target, Calendar, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { Mic, PenLine, Headphones, BookOpen, Flame, Target, Calendar, Sparkles, TrendingDown, TrendingUp, Zap, ArrowRight, Trophy } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 
 export default function Dashboard() {
@@ -11,11 +11,13 @@ export default function Dashboard() {
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState(null);
   const [pain, setPain] = useState(null);
+  const [drillStreak, setDrillStreak] = useState(null);
 
   useEffect(() => {
     api.get("/profile").then((r) => setProfile(r.data));
     api.get("/dashboard/stats").then((r) => setStats(r.data));
     api.get("/dashboard/pain-points").then((r) => setPain(r.data));
+    api.get("/drill/streak").then((r) => setDrillStreak(r.data)).catch(() => {});
   }, []);
 
   const overall = stats?.overall_band ?? profile?.current_band ?? 0;
@@ -41,6 +43,46 @@ export default function Dashboard() {
         <h1 className="font-serif-display text-3xl sm:text-5xl mt-2">Hello, {user?.name?.split(" ")[0] || "there"}.</h1>
         <p className="text-sm sm:text-base text-[#4A5550] mt-3 max-w-xl">Pick a skill and start training. Aria is ready when you are.</p>
       </header>
+
+      {/* Daily Drill — hero card */}
+      <button
+        onClick={() => navigate("/app/drill")}
+        data-testid="daily-drill-card"
+        className="w-full text-left bg-gradient-to-br from-[#1A201C] via-[#1B4332] to-[#2D6A4F] text-white rounded-2xl p-5 sm:p-7 relative overflow-hidden hover:-translate-y-1 hover:shadow-xl transition-all"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+          <div className="md:col-span-7">
+            <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] bg-[#E9C46A]/15 text-[#E9C46A] border border-[#E9C46A]/30 rounded-full px-3 py-1 mb-3">
+              <Zap className="h-3 w-3" /> Daily drill · ~8 min
+            </div>
+            <h2 className="font-serif-display text-2xl sm:text-3xl leading-tight">
+              {drillStreak?.today_done
+                ? "Nice — drill done today."
+                : drillStreak?.streak_days > 0
+                ? `Day ${drillStreak.streak_days + 1} of your streak`
+                : "Start your daily IELTS routine"}
+            </h2>
+            <p className="text-sm text-white/75 mt-2">A 4-piece routine (vocab + listening + speaking + grammar) auto-calibrated to your weakest area. Built for busy days.</p>
+          </div>
+          <div className="md:col-span-5 flex items-center justify-between md:justify-end gap-5 sm:gap-7">
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-1.5">
+                <Flame className="h-5 w-5 text-[#E9C46A]" />
+                <span className="font-serif-display text-3xl sm:text-4xl">{drillStreak?.streak_days ?? 0}</span>
+              </div>
+              <div className="text-[9px] uppercase tracking-widest text-white/60 mt-0.5">streak</div>
+            </div>
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-1.5">
+                <Trophy className="h-5 w-5 text-[#E9C46A]" />
+                <span className="font-serif-display text-3xl sm:text-4xl">{drillStreak?.total_xp ?? 0}</span>
+              </div>
+              <div className="text-[9px] uppercase tracking-widest text-white/60 mt-0.5">xp</div>
+            </div>
+            <ArrowRight className="h-6 w-6 text-[#E9C46A]" />
+          </div>
+        </div>
+      </button>
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">

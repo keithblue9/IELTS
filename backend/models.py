@@ -191,3 +191,28 @@ class ReadingAttemptReq(BaseModel):
 class TTSReq(BaseModel):
     text: str
     voice: str = "nova"
+
+
+# ---------- Daily Drill ----------
+class DrillItemComplete(BaseModel):
+    drill_id: str
+    item_index: int
+    result: Optional[Dict[str, Any]] = None  # e.g., {"correct": 2, "total": 3}
+
+
+class DailyDrill(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=gen_id)
+    user_id: str
+    date_str: str  # YYYY-MM-DD
+    day_index: int = 1
+    title: str = ""
+    focus_area: str = ""
+    estimated_minutes: int = 8
+    items: List[Dict[str, Any]] = Field(default_factory=list)  # generated content
+    completed_items: List[int] = Field(default_factory=list)  # item indexes completed
+    item_results: Dict[str, Any] = Field(default_factory=dict)  # {"<idx>": {...}}
+    xp_earned: int = 0
+    completed: bool = False
+    completed_at: Optional[str] = None
+    created_at: str = Field(default_factory=now_iso)

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 5 Daily Drill end-to-end testing on REACT_APP_BACKEND_URL preview. BACKEND: 13/14 pytest checks passed (1 skipped because item 0 was already completed in DB from a previous smoke run). All Daily Drill backend contract verified: /api/drill/streak returns correct shape and types; /api/drill/today returns 4 items in exact order [vocab, listen, speak, grammar] with required data sub-keys (cards / script+questions / prompt+model_answer+tips / sentences[wrong,fixed,explanation]); second call same day returns the SAME drill in <2s (cached, no re-gen — measured 1.68s end-to-end run); complete-item adds exactly +25 XP per item and is idempotent (re-completing item 0 does not duplicate or double-add XP); completion bonus brings total to >=125 XP (4 items × 25 + 25 bonus); drill.completed=true and completed_at set after item 3; /api/drill/streak returns streak_days>=1, today_done=true, total_xp>=125 after completion; /api/drill/history returns the drill. Iter4 explanation-leak bug confirmed FIXED: /api/listening/tests and /api/reading/passages list endpoints no longer return per-question explanation/answer. PIN login, dashboard/stats, dashboard/pain-points still working (back-compat ✓). FRONTEND: PIN auto-submits, redirects to /app, daily-drill-card visible (dark green gradient) showing 'Day 1 — Focus: Fluency & Coherence', streak=1, XP=125, progress bar 4 of 4 done 100%, 'Completed today — come back tomorrow' badge. Top-nav has 'Daily' link (nav-drill highlighted active). Clicking card navigates to /app/drill which renders the streak header + all 4 drill-item-{0..3} cards with correct icons/colors and labels (vocab 2min, listen 3min, speak 2min, grammar 2min). Vocab item opens to a 5-card list with IPA / definition; drill-vocab-done button rendered (showing 'Already done' since this drill was completed). Mobile (390x844): bottom nav is grid-cols-6 with exactly 6 children (Home, Daily, Speak, Write, Listen, Read); nav-drill-mobile present; all 4 drill-item cards visible. No error elements on either page. Pre-existing iter4 cosmetic warning still present: Recharts container width(-1)/height(-1) warnings on Dashboard mount (non-blocking).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/drill/today", "issue": "First-time generation can take ~30s (Claude single LLM call). If the Cloudflare edge times out at 60s under load this would 502 like /listening/generate did in iter4. Consider 90s timeout buffer or move to async/poll pattern."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Recharts ResponsiveContainer still emits width(-1) height(-1) warnings on first paint (4 occurrences). Carry-over from iter4 — main agent should add explicit minHeight on the container to silence."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter5_drill.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Add explicit minHeight to Recharts ResponsiveContainer on Dashboard to remove width(-1) warnings (pre-existing iter4 issue).",
+    "(Optional, performance) /api/drill/today first call hits Claude synchronously (~30s). If users on slow networks see timeouts, consider async job pattern."
+  ],
+  "critical_code_review_comments": [
+    "drill complete-item correctly guards against double-add via 'if payload.item_index in completed: return drill' — idempotency verified by test.",
+    "_compute_streak counts consecutive days correctly and handles the today-or-yesterday start case (so finishing tomorrow's drill won't reset streak).",
+    "DailyDrill model.items uses List[Dict[str, Any]] (untyped) — acceptable since Claude shape is enforced by prompt, but adds risk of malformed item.data; consider Pydantic sub-models for vocab/listen/speak/grammar to fail fast on bad LLM output.",
+    "drill_service.generate_daily_drill has no retry on JSON parse failure — if Claude returns malformed JSON the /api/drill/today endpoint raises 500. Same pattern as listening/reading generate; a single retry could improve UX without much cost.",
+    "server.py is now 832 lines and includes seven feature surfaces (auth, profile, dashboard, speaking, writing, listening, reading, audio, drill). Past the 700-line threshold from code-review guidelines — would benefit from splitting drill endpoints into a routers/drill.py module like other large FastAPI codebases."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter5_drill.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/14, 1 skipped due to pre-existing DB state — not a failure)", "frontend": "100% (all flows from review request verified on both desktop 1920x1080 and mobile 390x844)"},
+  "test_credentials": "PIN 123456 (default, verified working)",
+  "seed_data_creation": "The iter5 test run completed today's drill for owner@local: streak_days=1, total_xp=125, completed_count=1. This is persistent in MongoDB; if main agent wants a 'fresh drill' state for further testing, delete from db.daily_drills where user_id=owner.id.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Owner's daily drill for TODAY is already completed (4/4 items, 125 XP). To test vocab/listen/speak/grammar interaction states from-scratch (e.g. 'opening all 5 vocab cards enables Mark-as-done'), the next agent must either (a) wait until tomorrow UTC, or (b) delete the today's drill row: `mongo: db.daily_drills.deleteOne({user_id: <owner_id>, date_str: '<today YYYY-MM-DD>'})`. The interaction-state UI rendered correctly in disabled/'Already done' mode; underlying logic is exercised by the backend complete-item idempotency test which passed.",
+  "rca_of_the_issue": "No bugs found in iter5. The iter4 outstanding bug (explanation leak in list endpoints) is confirmed fixed in this run — both /api/listening/tests and /api/reading/passages now strip both 'answer' and 'explanation' per question."
+}

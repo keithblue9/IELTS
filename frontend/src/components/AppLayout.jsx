@@ -1,10 +1,11 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { Mic, PenLine, Headphones, BookOpen, LayoutDashboard, Settings, LogOut, GraduationCap } from "lucide-react";
+import { Mic, PenLine, Headphones, BookOpen, LayoutDashboard, Settings, LogOut, GraduationCap, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const NAV = [
   { to: "/app", label: "Home", icon: LayoutDashboard, end: true, testid: "nav-dashboard" },
+  { to: "/app/drill", label: "Daily", icon: Zap, testid: "nav-drill" },
   { to: "/app/speaking", label: "Speak", icon: Mic, testid: "nav-speaking" },
   { to: "/app/writing", label: "Write", icon: PenLine, testid: "nav-writing" },
   { to: "/app/listening", label: "Listen", icon: Headphones, testid: "nav-listening" },
@@ -78,7 +79,7 @@ export default function AppLayout({ children }) {
 
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-[#E5E2DC] safe-bottom">
-        <div className="grid grid-cols-5 max-w-md mx-auto">
+        <div className="grid grid-cols-6 max-w-md mx-auto">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
