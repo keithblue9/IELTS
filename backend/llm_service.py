@@ -1,0 +1,305 @@
+"""LLM service for IELTS tutoring & scoring (Claude Sonnet 4.5 via emergentintegrations)."""
+import json
+import os
+import re
+from typing import Dict, List, Optional
+
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+MODEL_PROVIDER = "anthropic"
+MODEL_NAME = "claude-sonnet-4-5-20250929"
+
+
+def _build_chat(session_id: str, system_message: str) -> LlmChat:
+    return LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=session_id,
+        system_message=system_message,
+    ).with_model(MODEL_PROVIDER, MODEL_NAME)
+
+
+def _parse_json(text: str) -> Optional[dict]:
+    """Best-effort JSON extraction from LLM output."""
+    m = re.search(r"\{[\s\S]*\}", text)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+
+# ===================== SPEAKING =====================
+
+SPEAKING_SYSTEM_TMPL = """You are Ms. Aria, an IELTS Speaking examiner and friendly tutor.
+You are conducting IELTS Speaking Part {part} with a candidate whose target band is {target_band}.
+Personality: {personality}. Native language: {native_language}.
+
+Rules:
+- Stay in character as the examiner.
+- Ask ONE question at a time, then wait for the candidate's spoken reply.
+- For Part 1: ask short personal/familiar topic questions (10-15 sec answers expected).
+- For Part 2: deliver a cue card with 4 bullet points and give the candidate 1 minute to prepare and 2 minutes to speak.
+- For Part 3: ask abstract/discursive questions tied to the Part 2 topic.
+- After every 2-3 turns, you may briefly (1 sentence) acknowledge ("Thank you, let's move on...") — never break character with lengthy feedback.
+- Keep your utterances under 60 words and use natural spoken English.
+- Do NOT correct the candidate during the test; full feedback happens at the end.
+
+Begin the test now."""
+
+
+async def generate_speaking_opener(
+    part: int,
+    topic: str,
+    target_band: float,
+    personality: str,
+    native_language: str,
+    session_id: str,
+) -> Dict[str, str]:
+    """Generate the examiner's opening question or cue card for a speaking session."""
+    system = SPEAKING_SYSTEM_TMPL.format(
+        part=part,
+        target_band=target_band,
+        personality=personality,
+        native_language=native_language,
+    )
+    chat = _build_chat(session_id, system)
+
+    if part == 1:
+        prompt = f"Begin Part 1 by greeting the candidate warmly and asking the first question about: {topic}. Output only your spoken examiner line."
+    elif part == 2:
+        prompt = (
+            f"Deliver the Part 2 cue card for topic '{topic}'. "
+            "Output JSON with keys: 'cue_card' (the full cue card including 'Describe...' + 4 bullet 'You should say:' lines + closing line), "
+            "'spoken' (what you would say out loud to introduce it). Return ONLY JSON."
+        )
+    else:
+        prompt = f"Begin Part 3 with a discursive opening question linked to '{topic}'. Output only your spoken line."
+
+    resp = await chat.send_message(UserMessage(text=prompt))
+    text = resp if isinstance(resp, str) else str(resp)
+
+    if part == 2:
+        parsed = _parse_json(text)
+        if parsed:
+            return {"spoken": parsed.get("spoken", ""), "cue_card": parsed.get("cue_card", "")}
+        return {"spoken": text, "cue_card": text}
+    return {"spoken": text.strip(), "cue_card": ""}
+
+
+async def speaking_turn(
+    session_id: str,
+    part: int,
+    topic: str,
+    target_band: float,
+    personality: str,
+    native_language: str,
+    history: List[Dict[str, str]],
+    user_text: str,
+) -> str:
+    """Generate the examiner's next question given conversation history."""
+    system = SPEAKING_SYSTEM_TMPL.format(
+        part=part,
+        target_band=target_band,
+        personality=personality,
+        native_language=native_language,
+    )
+    chat = _build_chat(session_id, system)
+    # Replay history briefly into the session by sending compact context (since LlmChat session has its own state)
+    context = "Here is the conversation so far:\n"
+    for m in history[-8:]:
+        role = "Candidate" if m["role"] == "user" else "Examiner"
+        context += f"{role}: {m['content']}\n"
+    context += f"Candidate (latest): {user_text}\n\nRespond now as the examiner with your next question or follow-up only. No meta-commentary."
+
+    resp = await chat.send_message(UserMessage(text=context))
+    return (resp if isinstance(resp, str) else str(resp)).strip()
+
+
+SCORING_SPEAKING_SYSTEM = """You are an official IELTS Speaking examiner. Score the candidate transcript strictly using the IELTS public band descriptors:
+- Fluency & Coherence
+- Lexical Resource
+- Grammatical Range & Accuracy
+- Pronunciation (infer from word choice, repetition, hesitations in transcript)
+
+Return ONLY valid JSON of the form:
+{
+  "overall_band": 6.5,
+  "criteria": {
+    "fluency": 6.5,
+    "lexical": 6.0,
+    "grammar": 7.0,
+    "pronunciation": 6.5
+  },
+  "strengths": ["..."],
+  "improvements": ["..."],
+  "tip_of_the_day": "...",
+  "model_answer": "A polished band-8 sample answer to the same prompt."
+}
+Bands must be in 0.5 increments between 4.0 and 9.0."""
+
+
+async def score_speaking(transcript: List[Dict[str, str]], topic: str, part: int) -> dict:
+    chat = _build_chat(f"score-speak-{topic[:10]}", SCORING_SPEAKING_SYSTEM)
+    text = "TOPIC: " + topic + f"\nPART: {part}\nTRANSCRIPT:\n"
+    for m in transcript:
+        role = "Candidate" if m["role"] == "user" else "Examiner"
+        text += f"{role}: {m['content']}\n"
+    resp = await chat.send_message(UserMessage(text=text + "\nReturn JSON only."))
+    parsed = _parse_json(resp if isinstance(resp, str) else str(resp))
+    if not parsed:
+        return {
+            "overall_band": 6.0,
+            "criteria": {"fluency": 6.0, "lexical": 6.0, "grammar": 6.0, "pronunciation": 6.0},
+            "strengths": ["Attempted the question."],
+            "improvements": ["Provide more detailed responses."],
+            "tip_of_the_day": "Use linking words to extend your answers.",
+            "model_answer": "",
+        }
+    return parsed
+
+
+# ===================== WRITING =====================
+
+WRITING_SYSTEM = """You are an official IELTS Writing examiner. Score the response strictly per IELTS public band descriptors:
+- Task Achievement / Task Response
+- Coherence & Cohesion
+- Lexical Resource
+- Grammatical Range & Accuracy
+
+Return ONLY valid JSON:
+{
+  "overall_band": 6.5,
+  "criteria": {
+    "task_achievement": 6.5,
+    "coherence_cohesion": 6.0,
+    "lexical_resource": 7.0,
+    "grammar_accuracy": 6.5
+  },
+  "word_count": 250,
+  "strengths": ["..."],
+  "improvements": ["..."],
+  "annotated_feedback": [
+    {"excerpt": "...short user text...", "issue": "grammar | lexis | coherence | task", "comment": "..."}
+  ],
+  "model_answer": "A polished band-8 sample response for the same prompt (about 250-300 words)."
+}
+Bands in 0.5 increments. Be honest, not generous."""
+
+
+async def score_writing(task: int, prompt: str, response_text: str) -> dict:
+    chat = _build_chat(f"score-write-{task}", WRITING_SYSTEM)
+    msg = f"TASK: {task}\nPROMPT:\n{prompt}\n\nCANDIDATE RESPONSE:\n{response_text}\n\nReturn JSON only."
+    resp = await chat.send_message(UserMessage(text=msg))
+    parsed = _parse_json(resp if isinstance(resp, str) else str(resp))
+    if not parsed:
+        return {
+            "overall_band": 6.0,
+            "criteria": {
+                "task_achievement": 6.0,
+                "coherence_cohesion": 6.0,
+                "lexical_resource": 6.0,
+                "grammar_accuracy": 6.0,
+            },
+            "word_count": len(response_text.split()),
+            "strengths": [],
+            "improvements": ["Could not analyze in detail. Please try again."],
+            "annotated_feedback": [],
+            "model_answer": "",
+        }
+    return parsed
+
+
+# ===================== LISTENING / READING GENERATION =====================
+
+LISTENING_SYSTEM = """You generate authentic IELTS Listening practice tests.
+A test has 4 sections.
+- Section 1: a transactional conversation between two speakers in a social context (e.g., booking, enquiry).
+- Section 2: a monologue in a social context (e.g., tour guide, announcement).
+- Section 3: a discussion among 2-3 speakers in an educational/training context.
+- Section 4: an academic monologue (lecture).
+Each section has 10 questions (mix of MCQ + fill-in-the-blank with short answers, max 3 words).
+
+Return ONLY valid JSON of the exact shape:
+{
+  "title": "Practice Test - ...",
+  "difficulty": "intermediate",
+  "sections": [
+    {
+      "section": 1,
+      "title": "...",
+      "script": "A clear narrative/dialogue script the speaker(s) will say verbatim, 350-500 words, formatted as 'Speaker A: ... Speaker B: ...' for conversations or a flowing monologue. Include all info needed to answer the questions.",
+      "questions": [
+        {"q_number": 1, "question": "What is the woman's name?", "options": ["A. Jane", "B. Joan", "C. June"], "answer": "B"},
+        {"q_number": 2, "question": "She lives at ___ Park Avenue.", "options": null, "answer": "42"}
+      ]
+    },
+    ...4 sections total, q_numbers 1-10, 11-20, 21-30, 31-40
+  ]
+}"""
+
+
+async def generate_listening_test(topic_hint: str = "general") -> dict:
+    chat = _build_chat(f"gen-listen-{topic_hint[:10]}", LISTENING_SYSTEM)
+    resp = await chat.send_message(
+        UserMessage(
+            text=f"Generate a complete IELTS Listening practice test. Theme hint: {topic_hint}. Return JSON only."
+        )
+    )
+    parsed = _parse_json(resp if isinstance(resp, str) else str(resp))
+    return parsed or {}
+
+
+READING_SYSTEM = """You generate IELTS Academic Reading passages with questions.
+Return ONLY valid JSON:
+{
+  "title": "...",
+  "difficulty": "intermediate",
+  "passage": "A 600-900 word academic passage on the given topic. Use paragraphs separated by blank lines.",
+  "questions": [
+    {"q_number": 1, "question": "True/False/Not Given: ...", "options": ["True", "False", "Not Given"], "answer": "True"},
+    {"q_number": 2, "question": "Fill in: The author argues that ___", "options": null, "answer": "industrialization"}
+  ]
+}
+Generate exactly 10 questions, mixing T/F/NG, MCQ, and short-answer."""
+
+
+async def generate_reading_passage(topic_hint: str = "science and society") -> dict:
+    chat = _build_chat(f"gen-read-{topic_hint[:10]}", READING_SYSTEM)
+    resp = await chat.send_message(
+        UserMessage(text=f"Topic: {topic_hint}. Return JSON only.")
+    )
+    parsed = _parse_json(resp if isinstance(resp, str) else str(resp))
+    return parsed or {}
+
+
+# ===================== BAND CALCULATION =====================
+
+def raw_to_band(correct: int, total: int = 40) -> float:
+    """Approximate IELTS Listening/Reading raw->band mapping."""
+    pct = (correct / total) * 40 if total else 0
+    # Listening rough mapping
+    if pct >= 39:
+        return 9.0
+    if pct >= 37:
+        return 8.5
+    if pct >= 35:
+        return 8.0
+    if pct >= 32:
+        return 7.5
+    if pct >= 30:
+        return 7.0
+    if pct >= 26:
+        return 6.5
+    if pct >= 23:
+        return 6.0
+    if pct >= 18:
+        return 5.5
+    if pct >= 16:
+        return 5.0
+    if pct >= 13:
+        return 4.5
+    if pct >= 10:
+        return 4.0
+    return 3.5

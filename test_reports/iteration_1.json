@@ -1,0 +1,50 @@
+{
+  "summary": "Ran full backend pytest suite (28 tests). 18 passed, 10 failed. Core auth, profile, writing, TTS, STT, dashboard work end-to-end. Critical bugs: (1) ObjectId leak in /api/reading/generate (and similar pattern in /api/listening/generate, /api/speaking/start) — motor.insert_one mutates the dict in-place by adding _id (ObjectId), then `safe = {**passage}` shallow copy retains it, causing 500 'ObjectId object is not iterable' on response serialization. (2) EMERGENT_LLM_KEY budget exhausted ('Budget has been exceeded! Current cost: 0.001482, Max budget: 0.001') — caused intermittent 500s on speaking/turn and reading/generate. (3) Cloudflare 502 on /api/listening/generate because LLM call takes longer than gateway timeout. (4) listening_generate also has the same ObjectId leak pattern; can't fully verify until budget restored.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/reading/generate", "issue": "500 Internal Server Error — TypeError: 'ObjectId' object is not iterable. After `await db.reading_passages.insert_one(passage)`, motor mutates passage dict to add ObjectId _id. Then `safe = {**passage}` shallow-copies the dict with _id still present, breaking JSON/Pydantic serialization on response.", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/listening/generate", "issue": "Same ObjectId leak pattern as reading/generate (line 387-394 of server.py). `safe = {**test}` retains _id field after insert_one mutation. Endpoint also times out behind Cloudflare gateway (502) for slow LLM responses (>~60s).", "priority": "CRITICAL"},
+      {"endpoint": "POST /api/speaking/start", "issue": "Same pattern — `session = SpeakingSession(...).model_dump(); await db.speaking_sessions.insert_one(session)` mutates session with _id. Currently the route returns a fresh dict so it survives, but the pattern is fragile and inconsistent.", "priority": "MEDIUM"},
+      {"endpoint": "EMERGENT_LLM_KEY / litellm", "issue": "Budget exceeded: 'Current cost: 0.001482, Max budget: 0.001'. Several LLM-backed calls (speaking/turn, reading/generate, listening/generate) fail with ChatError. Universal key budget needs to be raised / replenished, otherwise the AI features will continue to randomly 500.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/listening/generate", "issue": "Cloudflare gateway returns 502 after ~60s. Listening generation often runs 60-120s. Consider: (a) generate asynchronously and poll, or (b) make the LLM prompt smaller, or (c) document timeout requirements."},
+      {"endpoint": "GET /api/listening/tests", "issue": "Mongo projection `sections.questions.answer: 0` works but is dotted-path projection on nested arrays — silently omits answers (verified working). No bug — informational."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_backend_e2e.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "FIX (high): In server.py /listening/generate, /reading/generate (and similarly /speaking/start), do not reuse the dict returned/mutated by motor.insert_one for the HTTP response. Either (a) `passage_doc = ReadingPassage(**data); await db.reading_passages.insert_one(passage_doc.model_dump()); return passage_doc.model_dump(exclude={'_id'})` building a fresh dict, or (b) pop '_id' before returning: `safe = {k:v for k,v in passage.items() if k != '_id'}`.",
+    "FIX (high): Top up / raise EMERGENT_LLM_KEY budget — current 0.001 cap is being hit on a single moderate Claude turn. This is blocking speaking/turn, reading/generate, and (intermittently) listening/generate.",
+    "FIX (medium): Listening generation is too slow for direct request/response under Cloudflare's gateway. Either reduce prompt size (fewer/shorter sections) or implement async polling endpoint (POST /api/listening/generate returning job_id, GET /api/listening/tests/{id} when ready).",
+    "Consider returning the listening/reading test without writing to DB first if generation succeeds — write asynchronously."
+  ],
+  "critical_code_review_comments": [
+    "server.py: `safe = {**test}` and `safe = {**passage}` after insert_one is a well-known motor footgun — insert_one mutates the input dict in place to add _id. Always strip _id explicitly before returning.",
+    "server.py /listening/generate, /reading/generate: They commit to DB BEFORE answer-stripping; if the strip fails (e.g., shape mismatch from Claude), partial data sits in DB. Either build the response separately from the DB doc, or strip first then insert.",
+    "llm_service._parse_json silently swallows parse failures and returns None, causing endpoints to either 500 or return a hard-coded fallback. Consider logging the raw LLM output (first 500 chars) to aid debugging when bands look generic.",
+    "server.py dashboard/stats: history sort by `s.get('created_at','')` works only because ISO strings sort lexicographically — brittle if timezone formats vary. Use real datetime comparison.",
+    "server.py /listening/tests projection `{'sections.questions.answer': 0}` works on documents but is fragile; safer to explicitly strip answers in Python after fetch (consistent with /listening/tests/{id} handler).",
+    "audio_service.synthesize_speech caps to 4000 chars silently — should at least log when truncation happens."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py (new)",
+    "/app/backend/tests/test_backend_e2e.py (new)"
+  ],
+  "success_rate": {"backend": "64% (18/28)", "frontend": "not tested"},
+  "test_credentials": "Tests create a fresh TEST_<random>@demo.io user per session via /api/auth/signup; password test123. Test user `test@demo.io / test123` also referenced from /app/memory/test_credentials.md (not used directly by tests).",
+  "seed_data_creation": "Each pytest session creates one ephemeral user, one speaking session, one writing submission, one listening test+attempt, one reading attempt. Documents are TEST_-prefixed via email and remain in DB after the run (no teardown).",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "After E1 fixes the ObjectId leak (strip _id before return in /listening/generate and /reading/generate) and after the EMERGENT_LLM_KEY budget is raised, re-run: pytest /app/backend/tests/test_backend_e2e.py -v. The 10 failures expected to clear: TestAuth/test_signup_returns_token_and_user, TestAuth/test_login_success, TestAuth/test_me_with_token failed only because of session fixture cascade from a prior 502 — they should pass once LLM-backed routes don't crash the session. Also note: listening/generate sometimes 502s behind Cloudflare due to >60s LLM latency; allow retries or split into smaller sections.",
+  "rca_of_the_issue": "Two independent root causes: (A) Motor's insert_one mutates the input document to add an _id (BSON ObjectId). server.py builds `safe = {**test}` / `{**passage}` AFTER insert_one, so safe still contains the ObjectId, which FastAPI/Pydantic v2 cannot iterate during JSON encoding → 500. Reproduction: POST /api/reading/generate with any auth — backend log shows `TypeError: 'ObjectId' object is not iterable`. Fix: pop _id before returning, e.g. `safe = {k:v for k,v in passage.items() if k != '_id'}`. (B) The universal EMERGENT_LLM_KEY budget cap of $0.001 is being exceeded by even a single Claude Sonnet 4.5 turn — backend log: `litellm.BadRequestError: OpenAIException - Budget has been exceeded! Current cost: 0.001482, Max budget: 0.001`. Fix: raise the budget for this key on the LLM gateway; until then all AI calls beyond the first one or two will fail randomly."
+}
