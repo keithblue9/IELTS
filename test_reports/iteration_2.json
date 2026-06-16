@@ -1,0 +1,40 @@
+{
+  "summary": "Re-ran full backend pytest suite after E1's fixes. ALL 28/28 tests PASS (100%) in ~116s. The two ObjectId-leak fixes (/api/listening/generate and /api/reading/generate now strip _id) and the listening prompt reduction (4 sections x 5 questions = 20 total, ~48s generation) both verified working end-to-end. EMERGENT_LLM_KEY budget no longer hit during this run — every LLM-backed endpoint (speaking start/turn/finish, writing/submit, listening/generate+submit, reading/generate+submit, tts, stt) returned 200 with correct shapes. Also tightened 3 auth assertions to be case-insensitive on email (backend correctly lowercases email at signup; previous test was asserting exact case).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/listening/generate", "issue": "Generation still takes ~45-55s (well under the 60s Cloudflare ceiling, but no safety margin). If LLM latency spikes, a 502 could resurface. Consider async job pattern long-term."},
+      {"endpoint": "GET /api/listening (list)", "issue": "Listening test now has 20 questions total (4x5) instead of the official IELTS 40 (4x10). Acceptable trade-off for gateway timeout but should be documented to end-users."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_backend_e2e.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Document the 20-question listening test as an intentional design choice in app copy / README.",
+    "(Optional, long-term) Convert /api/listening/generate to an async job with polling so generation can safely exceed 60s without hitting Cloudflare timeout."
+  ],
+  "critical_code_review_comments": [
+    "ObjectId leak in /listening/generate and /reading/generate is fixed — _id is now explicitly stripped before response. Pattern is now consistent across both endpoints.",
+    "Speaking endpoints already returned fresh dicts; no regression there.",
+    "llm_service._parse_json still silently swallows parse failures and returns None — low priority but worth logging the raw LLM output on parse failure to aid debugging if bands look generic.",
+    "dashboard/stats history sort uses ISO-string lexicographic comparison (s.get('created_at','')); works but brittle if timezone formats vary. Suggest datetime comparison."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_backend_e2e.py (3 auth assertions made case-insensitive on email — backend correctly lowercases email at signup)"
+  ],
+  "success_rate": {"backend": "100% (28/28)", "frontend": "not tested (per request)"},
+  "test_credentials": "Tests create a fresh TEST_<uuid>@demo.io user per session via /api/auth/signup (password test123). The static test@demo.io / test123 user from /app/memory/test_credentials.md is not used.",
+  "seed_data_creation": "Each pytest session creates one ephemeral user, one speaking session, one writing submission, one listening test+attempt, one reading attempt. Documents are TEST_-prefixed via email and remain in DB after the run (no teardown).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is fully green. All 8 endpoints flagged in the review request are verified: /reading/generate (no _id, no 'answer' field), /listening/generate (no _id, 4x5 questions, no 'answer'), /listening/submit (correct/total/band/review), /reading/submit (correct/total/band/review), /speaking start+turn+finish (overall_band + criteria), /writing/submit task=2 (overall_band + criteria), /tts (audio/mpeg >1KB), /dashboard/stats (counts + bands). EMERGENT_LLM_KEY budget held up across the entire 116s run — no transient 'budget exceeded' errors observed. If frontend testing is requested next, the integration surface is stable.",
+  "rca_of_the_issue": "Prior iteration_1.json identified two root causes — both confirmed fixed: (A) motor.insert_one mutating the input dict to add _id, which then leaked into the JSON response as a non-serializable ObjectId. E1 fixed by explicitly stripping _id before returning in /listening/generate and /reading/generate. (B) Listening LLM prompt size was producing 4x10=40 questions and exceeding Cloudflare's ~60s gateway timeout. E1 reduced to 4x5=20 questions; generation now completes in ~45-55s reliably. The earlier 'budget exceeded' error from litellm was transient and did not recur during this iteration."
+}

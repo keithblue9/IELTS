@@ -386,8 +386,8 @@ async def listening_generate(topic_hint: Optional[str] = None, user_id: str = De
         raise HTTPException(status_code=500, detail="Failed to generate test. Please retry.")
     test = ListeningTest(**test_data).model_dump()
     await db.listening_tests.insert_one(test)
-    # don't return answers
-    safe = {**test}
+    # build safe response (strip _id added by motor + strip answers)
+    safe = {k: v for k, v in test.items() if k != "_id"}
     for sec in safe.get("sections", []):
         for q in sec.get("questions", []):
             q.pop("answer", None)
@@ -455,7 +455,7 @@ async def reading_generate(topic_hint: Optional[str] = None, user_id: str = Depe
         raise HTTPException(status_code=500, detail="Failed to generate passage. Please retry.")
     passage = ReadingPassage(**data).model_dump()
     await db.reading_passages.insert_one(passage)
-    safe = {**passage}
+    safe = {k: v for k, v in passage.items() if k != "_id"}
     for q in safe.get("questions", []):
         q.pop("answer", None)
     return safe

@@ -43,7 +43,7 @@ class TestAuth:
         token = signup_user["token"]
         user = signup_user["user"]
         assert isinstance(token, str) and len(token) > 20
-        assert user["email"] == signup_user["payload"]["email"]
+        assert user["email"].lower() == signup_user["payload"]["email"].lower()
         assert user["name"] == signup_user["payload"]["name"]
         assert "id" in user
 
@@ -60,7 +60,7 @@ class TestAuth:
         assert r.status_code == 200
         data = r.json()
         assert "token" in data
-        assert data["user"]["email"] == signup_user["payload"]["email"]
+        assert data["user"]["email"].lower() == signup_user["payload"]["email"].lower()
 
     def test_login_wrong_password_returns_401(self, http, signup_user):
         r = http.post(
@@ -74,7 +74,7 @@ class TestAuth:
         r = auth_session.get(f"{API}/auth/me", timeout=15)
         assert r.status_code == 200
         data = r.json()
-        assert data["email"] == signup_user["payload"]["email"]
+        assert data["email"].lower() == signup_user["payload"]["email"].lower()
 
     def test_me_without_token_401(self, http):
         r = requests.get(f"{API}/auth/me", timeout=15)

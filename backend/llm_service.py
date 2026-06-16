@@ -213,13 +213,14 @@ async def score_writing(task: int, prompt: str, response_text: str) -> dict:
 
 # ===================== LISTENING / READING GENERATION =====================
 
-LISTENING_SYSTEM = """You generate authentic IELTS Listening practice tests.
-A test has 4 sections.
-- Section 1: a transactional conversation between two speakers in a social context (e.g., booking, enquiry).
-- Section 2: a monologue in a social context (e.g., tour guide, announcement).
-- Section 3: a discussion among 2-3 speakers in an educational/training context.
-- Section 4: an academic monologue (lecture).
-Each section has 10 questions (mix of MCQ + fill-in-the-blank with short answers, max 3 words).
+LISTENING_SYSTEM = """You generate authentic IELTS Listening practice tests in a compact, fast format.
+A test has 4 sections. Each section has 5 questions (mix MCQ + short fill-in, max 3 words for fill-in).
+- Section 1: a short transactional conversation between two speakers (e.g., booking, enquiry).
+- Section 2: a short monologue in a social context (e.g., tour guide, announcement).
+- Section 3: a short discussion among 2 speakers in an educational context.
+- Section 4: a short academic monologue (lecture excerpt).
+
+Scripts should be 180-260 words each (concise but containing all info to answer the 5 questions).
 
 Return ONLY valid JSON of the exact shape:
 {
@@ -229,15 +230,15 @@ Return ONLY valid JSON of the exact shape:
     {
       "section": 1,
       "title": "...",
-      "script": "A clear narrative/dialogue script the speaker(s) will say verbatim, 350-500 words, formatted as 'Speaker A: ... Speaker B: ...' for conversations or a flowing monologue. Include all info needed to answer the questions.",
+      "script": "Speaker A: ... Speaker B: ... (180-260 words, plain text)",
       "questions": [
         {"q_number": 1, "question": "What is the woman's name?", "options": ["A. Jane", "B. Joan", "C. June"], "answer": "B"},
         {"q_number": 2, "question": "She lives at ___ Park Avenue.", "options": null, "answer": "42"}
       ]
-    },
-    ...4 sections total, q_numbers 1-10, 11-20, 21-30, 31-40
+    }
   ]
-}"""
+}
+Sections 1-4 must contain q_numbers 1-5, 6-10, 11-15, 16-20 respectively. Total 20 questions."""
 
 
 async def generate_listening_test(topic_hint: str = "general") -> dict:
