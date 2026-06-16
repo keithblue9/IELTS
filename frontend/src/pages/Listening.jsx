@@ -85,7 +85,7 @@ export default function Listening() {
         <header>
           <div className="text-xs uppercase tracking-[0.2em] text-[#8A958F]">IELTS · Listening</div>
           <h1 className="font-serif-display text-4xl mt-2">Train your ears</h1>
-          <p className="text-[#4A5550] mt-3 max-w-2xl">Four sections, 40 questions, narrated by an AI voice. Mix of multiple choice and short answer — just like the real test.</p>
+          <p className="text-[#4A5550] mt-3 max-w-2xl">Four sections, 20 questions, narrated by an AI voice. Mix of multiple choice and short answer — just like the real test.</p>
         </header>
         <Card className="p-6 border-[#E5E2DC]">
           <h3 className="font-serif-display text-xl">Generate a new test</h3>

@@ -81,7 +81,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <SkillCard testid="skill-speaking" tint="#2D6A4F" icon={Mic} title="Speaking" desc="Talk with Ms. Aria, the AI examiner." onClick={() => navigate("/app/speaking")} />
           <SkillCard testid="skill-writing" tint="#E07A5F" icon={PenLine} title="Writing" desc="Task 1 & 2 scoring, with model answers." onClick={() => navigate("/app/writing")} />
-          <SkillCard testid="skill-listening" tint="#E9C46A" icon={Headphones} title="Listening" desc="4-section narrated tests, 40 questions." onClick={() => navigate("/app/listening")} />
+          <SkillCard testid="skill-listening" tint="#E9C46A" icon={Headphones} title="Listening" desc="4-section narrated tests, 20 questions." onClick={() => navigate("/app/listening")} />
           <SkillCard testid="skill-reading" tint="#1A201C" icon={BookOpen} title="Reading" desc="Academic passages with timed grading." onClick={() => navigate("/app/reading")} />
         </div>
       </section>
